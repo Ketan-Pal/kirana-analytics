@@ -28,7 +28,7 @@ CATALOG_PRODUCTS = [
     {"name": "Lay's Magic Masala 50g", "category": "Snacks", "unit": "packet", "price": 20.0, "season": "All-Season", "trend_bias": 1.25, "aliases": ["lays blue", "lays masala"]},
     {"name": "Haldiram Aloo Bhujia 200g", "category": "Snacks", "unit": "packet", "price": 55.0, "season": "Festive", "trend_bias": 1.20, "aliases": ["aloo bhujia", "haldiram bhujia"]},
 
-    # Beverages (Strong Seasonal Variances)
+    # Beverages (Strong Seasonal & Weather Variances)
     {"name": "Brooke Bond Red Label Tea 250g", "category": "Beverages", "unit": "packet", "price": 135.0, "season": "Winter", "trend_bias": 1.10, "aliases": ["red label chai", "chai patti", "tea"]},
     {"name": "Thums Up 250ml Bottle", "category": "Beverages", "unit": "bottle", "price": 20.0, "season": "Summer", "trend_bias": 1.15, "aliases": ["thums up", "thumsup", "cold drink"]},
     {"name": "Sting Energy Drink 250ml", "category": "Beverages", "unit": "bottle", "price": 20.0, "season": "Summer", "trend_bias": 1.65, "aliases": ["sting", "energy drink"]},
@@ -40,42 +40,48 @@ CATALOG_PRODUCTS = [
     {"name": "Dettol Soap 75g", "category": "Personal Care", "unit": "piece", "price": 40.0, "season": "Monsoon", "trend_bias": 1.05, "aliases": ["dettol soap", "dettol sabun"]}
 ]
 
-# Basket Templates representing real-world shopping patterns
 BASKET_PATTERNS = [
     {
         "name": "Breakfast Daily",
-        "time": "Morning",
-        "items": [("Amul Taaza Milk 500ml", 2), ("Britannia Marie Gold 120g", 1)]
+        "time": "08:15 AM",
+        "time_period": "Morning",
+        "items": [("Amul Taaza Milk 500ml", 2, "500ml"), ("Britannia Marie Gold 120g", 1, "120g")]
     },
     {
         "name": "Chai Time Ritual",
-        "time": "Evening",
-        "items": [("Brooke Bond Red Label Tea 250g", 1), ("Sugar (Loose)", 1), ("Parle-G Biscuits 100g", 2)]
+        "time": "05:30 PM",
+        "time_period": "Evening",
+        "items": [("Brooke Bond Red Label Tea 250g", 1, "250g"), ("Sugar (Loose)", 1, "1kg"), ("Parle-G Biscuits 100g", 2, "100g")]
     },
     {
         "name": "Evening Quick Munch",
-        "time": "Evening",
-        "items": [("Maggi 2-Minute Noodles 70g", 3), ("Thums Up 250ml Bottle", 2)]
+        "time": "07:10 PM",
+        "time_period": "Evening",
+        "items": [("Maggi 2-Minute Noodles 70g", 3, "70g"), ("Thums Up 250ml Bottle", 2, "250ml")]
     },
     {
         "name": "Youth Refreshment",
-        "time": "Afternoon",
-        "items": [("Sting Energy Drink 250ml", 1), ("Lay's Magic Masala 50g", 1)]
+        "time": "03:45 PM",
+        "time_period": "Afternoon",
+        "items": [("Sting Energy Drink 250ml", 1, "250ml"), ("Lay's Magic Masala 50g", 1, "50g")]
     },
     {
         "name": "Weekend Household Replenishment",
-        "time": "Evening",
-        "items": [("Aashirvaad Atta 5kg", 1), ("Toor Dal 1kg", 1), ("Tata Salt 1kg", 1), ("Fortune Mustard Oil 1L", 1)]
+        "time": "11:20 AM",
+        "time_period": "Morning",
+        "items": [("Aashirvaad Atta 5kg", 1, "5kg"), ("Toor Dal 1kg", 1, "1kg"), ("Tata Salt 1kg", 1, "1kg"), ("Fortune Mustard Oil 1L", 1, "1L")]
     },
     {
         "name": "Pooja & Sweet Prep",
-        "time": "Morning",
-        "items": [("Besan (Gram Flour) 500g", 1), ("Sugar (Loose)", 2), ("Amul Pure Ghee 1L", 1)]
+        "time": "09:00 AM",
+        "time_period": "Morning",
+        "items": [("Besan (Gram Flour) 500g", 1, "500g"), ("Sugar (Loose)", 2, "1kg"), ("Amul Pure Ghee 1L", 1, "1L")]
     },
     {
         "name": "Kitchen Sanitation",
-        "time": "Morning",
-        "items": [("Surf Excel Easy Wash 500g", 1), ("Vim Dishwash Bar 155g", 2)]
+        "time": "06:15 PM",
+        "time_period": "Evening",
+        "items": [("Surf Excel Easy Wash 500g", 1, "500g"), ("Vim Dishwash Bar 155g", 2, "155g")]
     }
 ]
 
@@ -84,7 +90,6 @@ def seed_database():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 1. Insert Catalog Items
     for item in CATALOG_PRODUCTS:
         aliases_json = json.dumps(item["aliases"])
         cursor.execute("""
@@ -94,19 +99,11 @@ def seed_database():
 
     conn.commit()
 
-    # 2. Check if transaction data already exists
-    cursor.execute("SELECT COUNT(*) FROM sale_items")
-    if cursor.fetchone()[0] > 0:
-        conn.close()
-        return
-
-    print("Generating 180 days (6 months) of multi-season Kirana transactions for pattern and forecast modeling...")
+    print("Seeding 180 days with sale_no, time, weather, and festival columns...")
 
     today = datetime.now()
-    days_to_seed = 180  # 6 months of historical depth
-
+    days_to_seed = 180
     item_lookup = {p["name"]: p for p in CATALOG_PRODUCTS}
-
     days_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
     for day_offset in range(days_to_seed, -1, -1):
@@ -116,54 +113,66 @@ def seed_database():
         day_of_week = days_names[sale_dt.weekday()]
         month_int = sale_dt.month
 
-        # Determine Season
-        if month_int in [3, 4, 5, 6]:
-            season_name = "Summer"
-        elif month_int in [7, 8, 9]:
-            season_name = "Monsoon"
+        # Assign Weather & Festival dynamically
+        if month_int in [5, 6]:
+            day_weather = random.choice(["Hot", "Hot", "Sunny"])
+            day_festival = "None"
+        elif month_int in [7, 8]:
+            day_weather = random.choice(["Rainy", "Rainy", "Humid", "Overcast"])
+            day_festival = "None"
         elif month_int in [10, 11]:
-            season_name = "Festive"
+            day_weather = "Pleasant"
+            day_festival = random.choice(["Navratri Day 1", "Diwali Prep", "Dhanteras", "None", "None"])
+        elif month_int in [12, 1]:
+            day_weather = "Cold"
+            day_festival = "Makar Sankranti" if month_int == 1 and sale_dt.day == 14 else "None"
+        elif month_int == 3:
+            day_weather = "Sunny"
+            day_festival = "Holi" if sale_dt.day == 20 else "None"
         else:
-            season_name = "Winter"
+            day_weather = "Normal"
+            day_festival = "None"
 
-        # Time progress factor (0.0 at oldest day -> 1.0 today)
         timeline_prog = 1.0 - (day_offset / days_to_seed)
-
-        # Base number of customer baskets per day (weekends are busier)
         is_weekend = day_of_week in ["Saturday", "Sunday"]
-        num_baskets = random.randint(18, 28) if is_weekend else random.randint(12, 18)
+        num_sales = random.randint(18, 26) if is_weekend else random.randint(12, 18)
 
         cursor.execute("""
-            INSERT INTO sales_batches (batch_date, created_at, raw_json, items_count, total_revenue)
-            VALUES (?, ?, ?, 0, 0.0)
-        """, (sale_date_str, f"{sale_date_str} 22:00:00", "{}"))
+            INSERT INTO sales_batches (batch_date, weather, festival, created_at, raw_json, items_count, total_revenue)
+            VALUES (?, ?, ?, ?, ?, 0, 0.0)
+        """, (sale_date_str, day_weather, day_festival, f"{sale_date_str} 22:00:00", "{}"))
         batch_id = cursor.lastrowid
 
         batch_rev = 0.0
         batch_items = 0
 
-        for b_idx in range(num_baskets):
-            basket_id = f"BSK-{sale_date_str}-{b_idx+1}"
+        for s_no in range(1, num_sales + 1):
+            basket_id = f"BSK-{sale_date_str}-{s_no}"
             pattern = random.choice(BASKET_PATTERNS)
-            time_period = pattern["time"]
+            sale_time = pattern["time"]
+            time_period = pattern["time_period"]
 
-            for item_name, base_qty in pattern["items"]:
+            for item_name, base_qty, pack_size in pattern["items"]:
                 p_info = item_lookup[item_name]
 
-                # Apply seasonal multiplier
-                season_mult = 1.0
-                if p_info["season"] == season_name:
-                    season_mult = 1.6
-                elif p_info["season"] == "Summer" and season_name == "Winter":
-                    season_mult = 0.4
-                elif p_info["season"] == "Winter" and season_name == "Summer":
-                    season_mult = 0.6
+                # Weather surge
+                w_mult = 1.0
+                if day_weather == "Rainy" and ("Tea" in item_name or "Maggi" in item_name or "Pakoda" in item_name):
+                    w_mult = 1.7
+                elif day_weather == "Hot" and ("Cold Drink" in item_name or "Sting" in item_name or "Thums" in item_name or "Dahi" in item_name):
+                    w_mult = 1.8
+                elif day_weather == "Cold" and ("Ghee" in item_name or "Tea" in item_name or "Oil" in item_name):
+                    w_mult = 1.5
 
-                # Apply changing growth trend bias (Sting, Maggi growing fast; loose sugar declining)
+                # Festival surge
+                f_mult = 1.0
+                if "Navratri" in day_festival and ("Ghee" in item_name or "Dahi" in item_name):
+                    f_mult = 1.9
+                elif "Diwali" in day_festival and ("Sugar" in item_name or "Besan" in item_name or "Ghee" in item_name):
+                    f_mult = 2.4
+
                 trend_mult = 1.0 + (p_info["trend_bias"] - 1.0) * timeline_prog
-
-                # Skip probability based on seasonal/trend suppression
-                chance = season_mult * trend_mult
+                chance = w_mult * f_mult * trend_mult
                 if chance < 0.6 and random.random() > chance:
                     continue
 
@@ -173,12 +182,16 @@ def seed_database():
 
                 cursor.execute("""
                     INSERT INTO sale_items (
-                        batch_id, sale_date, month_str, day_of_week, time_period,
-                        basket_id, product_name, category, quantity, unit, unit_price, total_amount
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        batch_id, sale_no, sale_date, sale_time, time_period,
+                        month_str, day_of_week, weather, festival,
+                        basket_id, product_name, category, quantity, unit, pack_size,
+                        unit_price, total_amount
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    batch_id, sale_date_str, month_str, day_of_week, time_period,
-                    basket_id, item_name, p_info["category"], qty, p_info["unit"], unit_price, line_total
+                    batch_id, s_no, sale_date_str, sale_time, time_period,
+                    month_str, day_of_week, day_weather, day_festival,
+                    basket_id, item_name, p_info["category"], qty, p_info["unit"], pack_size,
+                    unit_price, line_total
                 ))
 
                 batch_rev += line_total
@@ -192,7 +205,7 @@ def seed_database():
 
     conn.commit()
     conn.close()
-    print("Historical transaction patterns & trend data seeded successfully!")
+    print("Database seeded with sale_no, time, weather, and festival data!")
 
 if __name__ == "__main__":
     seed_database()

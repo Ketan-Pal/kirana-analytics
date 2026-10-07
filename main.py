@@ -3,7 +3,6 @@ from typing import Dict, Any, List
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from database import init_db
 from seed_data import seed_database
@@ -11,6 +10,7 @@ from analytics import (
     get_basket_co_purchases,
     get_day_of_week_patterns,
     get_time_of_day_patterns,
+    get_weather_impact_analysis,
     get_changing_trend_patterns,
     get_historical_monthly_summary
 )
@@ -20,7 +20,7 @@ from forecasting import (
 )
 from ingestion import ingest_gemini_sales_json
 
-app = FastAPI(title="Kirana Demand Pattern & Predictive Forecasting", version="2.0.0")
+app = FastAPI(title="Kirana Demand Pattern & Predictive Forecasting", version="2.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,6 +48,10 @@ def api_day_patterns():
 @app.get("/api/time-patterns")
 def api_time_patterns():
     return get_time_of_day_patterns()
+
+@app.get("/api/weather-patterns")
+def api_weather_patterns():
+    return get_weather_impact_analysis()
 
 @app.get("/api/changing-trends")
 def api_changing_trends():
@@ -87,9 +91,7 @@ def index_page():
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kirana Demand & Pattern Forecasting</title>
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -110,7 +112,7 @@ def index_page():
             Kirana Demand & Buying Patterns
             <span class="text-xs bg-indigo-500 text-white font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider">Predictive AI</span>
           </h1>
-          <p class="text-xs text-slate-400">Basket Associations • Trend Momentum • Multi-Season Demand Forecasting</p>
+          <p class="text-xs text-slate-400">Basket Associations • Weather & Festival Impacts • Multi-Season Forecasting</p>
         </div>
       </div>
 
@@ -141,18 +143,18 @@ def index_page():
         <span class="text-xs text-emerald-500 font-semibold" id="kpi-surge-rate">+0% Growth Momentum</span>
       </div>
       <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-sm">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Strongest Basket Pairing</span>
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Top Basket Co-Purchase</span>
         <div class="mt-2 text-base font-bold text-amber-300 truncate" id="kpi-top-pair">-</div>
         <span class="text-xs text-slate-400 font-medium" id="kpi-pair-stat">0% Co-Purchase Frequency</span>
       </div>
       <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-sm">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Next Festival / Seasonal Event</span>
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Next Festival / Surge Event</span>
         <div class="mt-2 text-lg font-black text-rose-400 truncate" id="kpi-next-fest">-</div>
         <span class="text-xs text-rose-300 font-semibold" id="kpi-fest-days">0 Days Remaining</span>
       </div>
     </div>
 
-    <!-- Section 1: Next Month SKU-by-SKU Demand Forecast -->
+    <!-- Section 1: Next Month SKU Demand Forecast -->
     <div class="bg-gradient-to-br from-indigo-950/60 via-slate-900 to-slate-900 border border-indigo-900/50 rounded-2xl p-5 shadow-lg">
       <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
         <div>
@@ -187,19 +189,33 @@ def index_page():
       </div>
     </div>
 
-    <!-- Section 2: Buying Patterns & Basket Dynamics -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Section 2: Buying Patterns & Weather Impacts -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
       <!-- Co-Purchasing Habits (Basket Pairs) -->
       <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-sm flex flex-col justify-between">
         <div>
           <h2 class="text-base font-bold text-white flex items-center gap-2 mb-1">
             <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
-            Customer Basket Co-Purchasing Patterns
+            Customer Basket Co-Purchases
           </h2>
-          <p class="text-xs text-slate-400 mb-4">What items are bought together in the same visit (FP-Growth Lift & Confidence)</p>
-          <div id="basket-pair-list" class="space-y-2.5">
+          <p class="text-xs text-slate-400 mb-3">Grouped via your notepad's <strong>sale no.</strong> column</p>
+          <div id="basket-pair-list" class="space-y-2 max-h-96 overflow-y-auto">
             <div class="text-center py-6 text-slate-500 text-xs">Mining basket combinations...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Weather Impact Insights -->
+      <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-sm flex flex-col justify-between">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2 mb-1">
+            <svg class="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+            Weather Demand Correlations
+          </h2>
+          <p class="text-xs text-slate-400 mb-3">Derived from the notepad's <strong>weather</strong> column</p>
+          <div id="weather-insights-list" class="space-y-2 text-xs max-h-96 overflow-y-auto">
+            <!-- Filled via JS -->
           </div>
         </div>
       </div>
@@ -208,37 +224,34 @@ def index_page():
       <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-sm">
         <h2 class="text-base font-bold text-white flex items-center gap-2 mb-1">
           <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-          Day-of-Week Customer Shopping Behavior
+          Day-of-Week Shopping Behavior
         </h2>
-        <p class="text-xs text-slate-400 mb-4">How shopping habits, basket value, and demands shift through the week</p>
-        <div id="day-pattern-list" class="space-y-2 text-xs">
+        <p class="text-xs text-slate-400 mb-3">Weekday essentials vs. Weekend surge</p>
+        <div id="day-pattern-list" class="space-y-1.5 text-xs max-h-96 overflow-y-auto">
           <!-- Filled via JS -->
         </div>
       </div>
     </div>
 
-    <!-- Section 3: Changing Trends (Past Data Analysis: Surging vs Declining) -->
+    <!-- Section 3: Changing Trends (Surging vs Declining) -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-      <!-- Surging Products -->
       <div class="bg-slate-900/90 rounded-2xl p-5 border border-emerald-900/40 shadow-sm">
         <h2 class="text-sm font-bold text-emerald-400 flex items-center gap-2 mb-1">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-          Surging Products (Fastest Demand Acceleration)
+          Surging Products (Fastest Momentum Acceleration)
         </h2>
-        <p class="text-xs text-slate-400 mb-3">Items with strong positive momentum in recent 30 days vs prior 30 days</p>
+        <p class="text-xs text-slate-400 mb-3">Recent 30 days vs prior 30 days</p>
         <div id="surging-container" class="space-y-2 text-xs">
           <!-- Filled via JS -->
         </div>
       </div>
 
-      <!-- Declining Products -->
       <div class="bg-slate-900/90 rounded-2xl p-5 border border-rose-900/40 shadow-sm">
         <h2 class="text-sm font-bold text-rose-400 flex items-center gap-2 mb-1">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
           Declining Products (Cooling Down / Preference Shift)
         </h2>
-        <p class="text-xs text-slate-400 mb-3">Items slowing down in sales volume (customer taste or seasonal taper)</p>
+        <p class="text-xs text-slate-400 mb-3">Items slowing down in sales frequency</p>
         <div id="declining-container" class="space-y-2 text-xs">
           <!-- Filled via JS -->
         </div>
@@ -254,14 +267,14 @@ def index_page():
       </div>
     </div>
 
-    <!-- Section 4: Indian Festival & Seasonal Surge Calendar -->
+    <!-- Section 4: Indian Festival Surge Calendar -->
     <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-sm">
       <div class="flex justify-between items-center mb-3">
         <div>
           <h2 class="text-base font-bold text-white flex items-center gap-2">
             🪔 Indian Festive & Seasonal Surge Roadmap (Next 12 Months)
           </h2>
-          <p class="text-xs text-slate-400">Pre-empt upcoming surge windows so you can order at wholesale before distributor price hikes</p>
+          <p class="text-xs text-slate-400">Derived from calendar & your notepad's <strong>festival</strong> annotations</p>
         </div>
       </div>
 
@@ -278,7 +291,7 @@ def index_page():
       <div class="flex justify-between items-center">
         <div>
           <h3 class="text-lg font-bold text-white">Ingest Gemini Daily Notepad JSON</h3>
-          <p class="text-xs text-slate-400">Paste the JSON output generated from your mobile notepad photo</p>
+          <p class="text-xs text-slate-400">Structured table format: [sale no.] [time] [products] [total] [weather] [festival]</p>
         </div>
         <button onclick="closeIngestModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
       </div>
@@ -288,7 +301,7 @@ def index_page():
           <label class="text-xs font-semibold text-slate-300">JSON Payload</label>
           <button onclick="loadSamplePayload()" class="text-xs text-indigo-400 hover:underline font-semibold">Load Sample Notepad JSON</button>
         </div>
-        <textarea id="jsonInput" rows="10" class="w-full bg-slate-950 font-mono text-xs p-3 border border-slate-800 rounded-xl text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder='{"date": "2026-10-07", "transactions": [...]}'></textarea>
+        <textarea id="jsonInput" rows="10" class="w-full bg-slate-950 font-mono text-xs p-3 border border-slate-800 rounded-xl text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
       </div>
 
       <div id="ingestStatus" class="text-xs font-semibold hidden"></div>
@@ -346,42 +359,62 @@ def index_page():
 
         const container = document.getElementById('basket-pair-list');
         container.innerHTML = basketData.map(b => `
-          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 hover:border-indigo-500/40 transition-colors">
-            <div class="flex justify-between items-start gap-2">
-              <div class="font-bold text-slate-200 text-xs flex items-center gap-1.5">
+          <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+            <div class="flex justify-between items-start gap-1">
+              <div class="font-bold text-slate-200 text-xs flex items-center gap-1">
                 <span class="text-indigo-400">${b.item_a}</span>
                 <span class="text-slate-500">+</span>
                 <span class="text-indigo-400">${b.item_b}</span>
               </div>
-              <span class="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-500/30">
-                ${b.confidence_pct}% Rate (${b.times_bought_together} bills)
+              <span class="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-500/30">
+                ${b.confidence_pct}%
               </span>
             </div>
-            <p class="text-[11px] text-slate-400 mt-1">${b.insight}</p>
+            <p class="text-[10px] text-slate-400 mt-1">${b.insight}</p>
           </div>
         `).join('');
       }
 
-      // 3. Day of Week Patterns
+      // 3. Weather Insights
+      const weatherData = await fetchAPI('/api/weather-patterns');
+      if (weatherData) {
+        const wContainer = document.getElementById('weather-insights-list');
+        wContainer.innerHTML = weatherData.map(w => `
+          <div class="p-2.5 bg-slate-950/60 border border-sky-950/40 rounded-xl">
+            <div class="flex justify-between items-center mb-1">
+              <span class="font-bold text-sky-400 text-xs">${w.weather} Weather (${w.days_observed} days)</span>
+            </div>
+            <p class="text-[10px] text-slate-400">${w.behavior_theme}</p>
+            <div class="mt-1 flex flex-wrap gap-1">
+              ${w.top_products.map(p => `
+                <span class="bg-slate-800 text-slate-300 text-[10px] px-1.5 py-0.5 rounded">
+                  ${p.product_name} (~${p.avg_daily_qty}/day)
+                </span>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // 4. Day of Week Patterns
       const dayData = await fetchAPI('/api/day-patterns');
       if (dayData) {
         const dContainer = document.getElementById('day-pattern-list');
         dContainer.innerHTML = dayData.map(d => `
-          <div class="p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between">
+          <div class="p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between">
             <div>
               <span class="font-bold text-white text-xs">${d.day}</span>
-              <p class="text-[11px] text-slate-400">${d.pattern_theme}</p>
-              <p class="text-[10px] text-indigo-300 mt-0.5">Top Sellers: ${d.top_drivers.join(', ')}</p>
+              <p class="text-[10px] text-slate-400">${d.pattern_theme}</p>
             </div>
             <div class="text-right">
               <span class="font-bold text-slate-200">₹${d.avg_basket_value}</span>
-              <p class="text-[10px] text-slate-500">avg basket</p>
+              <p class="text-[9px] text-slate-500">avg spend</p>
             </div>
           </div>
         `).join('');
       }
 
-      // 4. Changing Trends (Surging vs Declining)
+      // 5. Changing Trends
       const trends = await fetchAPI('/api/changing-trends');
       if (trends) {
         if (trends.surging_products.length > 0) {
@@ -416,13 +449,11 @@ def index_page():
         }
       }
 
-      // 5. Monthly Timeline Chart
+      // 6. Monthly Timeline Chart
       const monthlyHistory = await fetchAPI('/api/monthly-history');
-      if (monthlyHistory) {
-        renderMonthlyChart(monthlyHistory);
-      }
+      if (monthlyHistory) renderMonthlyChart(monthlyHistory);
 
-      // 6. Festival Roadmap
+      // 7. Festival Roadmap
       const roadmapData = await fetchAPI('/api/festival-roadmap');
       if (roadmapData && roadmapData.roadmap.length > 0) {
         const nextFest = roadmapData.roadmap[0];
@@ -506,12 +537,45 @@ def index_page():
     function loadSamplePayload() {
       const sample = {
         "date": new Date().toISOString().slice(0, 10),
-        "transactions": [
-          {"raw_text": "2 amul taaza 500", "standardized_name": "Amul Taaza Milk 500ml", "category": "Dairy", "quantity": 2, "unit": "packet", "unit_price": 27.0, "total_amount": 54.0},
-          {"raw_text": "1 marie gold", "standardized_name": "Britannia Marie Gold 120g", "category": "Snacks", "quantity": 1, "unit": "packet", "unit_price": 15.0, "total_amount": 15.0},
-          {"raw_text": "3 maggi packet", "standardized_name": "Maggi 2-Minute Noodles 70g", "category": "Snacks", "quantity": 3, "unit": "packet", "unit_price": 14.0, "total_amount": 42.0},
-          {"raw_text": "2 thumsup 250ml", "standardized_name": "Thums Up 250ml Bottle", "category": "Beverages", "quantity": 2, "unit": "bottle", "unit_price": 20.0, "total_amount": 40.0},
-          {"raw_text": "cheeni 2kg 90", "standardized_name": "Sugar (Loose)", "category": "Staples", "quantity": 2, "unit": "kg", "unit_price": 45.0, "total_amount": 90.0}
+        "day_weather": "Rainy",
+        "day_festival": "None",
+        "sales": [
+          {
+            "sale_no": 1,
+            "time": "08:15 AM",
+            "time_period": "Morning",
+            "bill_total": 69.0,
+            "weather": "Rainy",
+            "festival": "None",
+            "items": [
+              {"raw_text": "2 amul taaza 500", "standardized_name": "Amul Taaza Milk 500ml", "category": "Dairy", "quantity": 2, "unit": "packet", "pack_size": "500ml", "unit_price": 27.0, "line_total": 54.0},
+              {"raw_text": "1 marie gold 120g", "standardized_name": "Britannia Marie Gold 120g", "category": "Snacks", "quantity": 1, "unit": "packet", "pack_size": "120g", "unit_price": 15.0, "line_total": 15.0}
+            ]
+          },
+          {
+            "sale_no": 2,
+            "time": "05:30 PM",
+            "time_period": "Evening",
+            "bill_total": 82.0,
+            "weather": "Rainy",
+            "festival": "None",
+            "items": [
+              {"raw_text": "3 maggi packet", "standardized_name": "Maggi 2-Minute Noodles 70g", "category": "Snacks", "quantity": 3, "unit": "packet", "pack_size": "70g", "unit_price": 14.0, "line_total": 42.0},
+              {"raw_text": "2 thumsup 250ml", "standardized_name": "Thums Up 250ml Bottle", "category": "Beverages", "quantity": 2, "unit": "bottle", "pack_size": "250ml", "unit_price": 20.0, "line_total": 40.0}
+            ]
+          },
+          {
+            "sale_no": 3,
+            "time": "07:45 PM",
+            "time_period": "Evening",
+            "bill_total": 330.0,
+            "weather": "Rainy",
+            "festival": "None",
+            "items": [
+              {"raw_text": "1 aashirvaad 5k", "standardized_name": "Aashirvaad Atta 5kg", "category": "Staples", "quantity": 1, "unit": "packet", "pack_size": "5kg", "unit_price": 240.0, "line_total": 240.0},
+              {"raw_text": "cheeni 2kg 90", "standardized_name": "Sugar (Loose)", "category": "Staples", "quantity": 2, "unit": "kg", "pack_size": "Loose", "unit_price": 45.0, "line_total": 90.0}
+            ]
+          }
         ]
       };
       document.getElementById('jsonInput').value = JSON.stringify(sample, null, 2);
@@ -549,7 +613,7 @@ def index_page():
         const data = await res.json();
         if (res.ok) {
           statusEl.className = "text-xs font-semibold text-emerald-400 block";
-          statusEl.innerText = `Ingested ${data.data.items_processed} items! Refreshing patterns & forecasts...`;
+          statusEl.innerText = `Ingested ${data.data.sales_recorded} sales bills (${data.data.total_items_processed} items)! Refreshing patterns...`;
           setTimeout(() => {
             closeIngestModal();
             loadAll();

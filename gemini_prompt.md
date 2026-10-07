@@ -1,58 +1,62 @@
-You are an expert Indian Kirana retail data specialist. I have attached a photo of my daily sales handwritten notepad page. 
+You are an expert Indian Kirana retail data specialist. I have attached a photo of my daily sales handwritten notepad page.
 
-Your task is to transcribe, interpret, clean, and convert every line into a structured, standardized sales record.
+The notepad is written in this tabular format:
+- Top: Date (e.g., 07/10/2026 or 07 Oct)
+- Columns: [sale no.]  [time]  [products quantity and size]  [total amount]  [weather]  [festival]
+
+Your task is to transcribe, interpret, clean, and convert each sale entry into a structured JSON record.
 
 ### Parsing Guidelines:
-1. Handle Kirana Abbreviations & Phonetic Names:
-   - "amul t/taaza/gold 500" -> Amul Taaza / Amul Gold (Milk)
-   - "tata namak / namak 1k" -> Tata Salt 1kg
-   - "aashirvaad / aata 5k/10k" -> Aashirvaad Atta
-   - "cheeni / sugar 2k 90" -> Loose Sugar, 2kg, Rs 90
-   - "surf / surf excel 500g" -> Surf Excel Detergent
-   - "maggi 4" -> Maggi 2-Minute Noodles (4 packets)
-   - "thums up / thumsup 250ml" -> Thums Up Beverage
-2. Quantities vs. Pack Sizes:
-   - Differentiate carefully between quantity sold (e.g., 2 pieces) and pack size (e.g., 500g, 1kg, 200ml).
-   - For loose commodities (grains, sugar, pulses), quantity is the weight in kg/grams.
-3. Pricing & Calculations:
-   - If unit price and quantity are given, calculate line total (Total = Qty * Unit Price).
-   - If only a total amount is written (e.g., "oil 1L 145"), assign 145 as the total.
-   - If price is missing or illegible, mark it as null.
-4. Payment Mode & Notes:
-   - Identify payment mentions: "UPI", "GPay", "PhonePe", "Paytm", "Cash", or "Khata / Udhar" with customer name.
-   - If not mentioned on a line, mark payment_mode as "unspecified".
-5. Illegible Text:
-   - Do NOT invent items. If a word or number is scratched out or unreadable, flag it with "is_uncertain": true.
+1. "sale no." -> Customer bill/sale number (1, 2, 3...) used for customer basket grouping.
+2. "time" -> Transcribe time (e.g., "8:30 AM", "6:15 PM"). Auto-classify into time_period: "Morning" (6AM-12PM), "Afternoon" (12PM-5PM), "Evening" (5PM-9PM), or "Night" (9PM onwards).
+3. "products quantity and size" -> Split individual items in the customer's purchase:
+   - Handle informal names ("amul taaza 500", "tata namak 1k", "cheeni 2kg", "3 maggi", "surf 500g", "2 sting").
+   - Extract standardized name, quantity (count or weight), unit (packet, kg, bottle, piece), and pack size (e.g. 500ml, 1kg, 250ml).
+4. "total amount" -> Extract the bill total amount (₹).
+5. "weather" -> Transcribe the weather condition (e.g., Sunny, Rainy, Hot, Cold, Normal). If written once at the top, apply to all entries.
+6. "festival" -> Transcribe the festival or occasion (e.g., None, Navratri, Diwali, Holi, Sunday Rush).
 
 ---
 
-### Output Format:
-Provide your response strictly in two sections:
+### Strict Output Format:
+Return ONLY the following JSON structure:
 
-#### Section 1: JSON Data Block (For Analytics Ingestion)
 ```json
 {
   "date": "YYYY-MM-DD",
-  "transactions": [
+  "day_weather": "Sunny | Rainy | Hot | Cold | Normal",
+  "day_festival": "None | Navratri | Diwali | Holi | etc.",
+  "sales": [
     {
-      "raw_text": "Exact handwritten text snippet",
-      "standardized_name": "Standard Brand & Product Name",
-      "category": "Dairy | Staples | Snacks | Beverages | Personal Care | Cleaning | Other",
-      "quantity": 1,
-      "unit": "packet | piece | kg | g | litre | ml",
-      "pack_size": "e.g., 500g, 1kg, 1L, or Standard",
-      "unit_price": 0.0,
-      "total_amount": 0.0,
-      "payment_mode": "Cash | UPI | Khata | Unspecified",
-      "customer_note": "Customer name if Khata, otherwise null",
-      "is_uncertain": false
+      "sale_no": 1,
+      "time": "08:30 AM",
+      "time_period": "Morning | Afternoon | Evening | Night",
+      "bill_total": 69.0,
+      "weather": "Rainy",
+      "festival": "None",
+      "items": [
+        {
+          "raw_text": "2 amul taaza 500",
+          "standardized_name": "Amul Taaza Milk 500ml",
+          "category": "Dairy | Staples | Snacks | Beverages | Personal Care | Cleaning | Other",
+          "quantity": 2,
+          "unit": "packet",
+          "pack_size": "500ml",
+          "unit_price": 27.0,
+          "line_total": 54.0
+        },
+        {
+          "raw_text": "1 marie gold 120g",
+          "standardized_name": "Britannia Marie Gold 120g",
+          "category": "Snacks",
+          "quantity": 1,
+          "unit": "packet",
+          "pack_size": "120g",
+          "unit_price": 15.0,
+          "line_total": 15.0
+        }
+      ]
     }
   ]
 }
 ```
-
-#### Section 2: Quick Daily Summary (For My Immediate Review)
-- Total Recorded Sales (₹)
-- Payment Breakdown (Cash ₹ vs UPI ₹ vs Khata ₹)
-- Top 3 Best-Selling Items by Volume
-- Items requiring clarification (if any handwriting was hard to read)

@@ -5,10 +5,7 @@ from typing import Dict, Any, List
 from database import get_connection
 
 def get_basket_co_purchases(min_pairs: int = 4) -> List[Dict[str, Any]]:
-    """
-    Analyzes which items are consistently bought together in customer bills.
-    Calculates co-occurrence count, confidence, and cross-sell lift.
-    """
+    """Analyzes customer basket combinations using the sale_no basket grouping."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -44,7 +41,6 @@ def get_basket_co_purchases(min_pairs: int = 4) -> List[Dict[str, Any]]:
             conf_b_a = count / item_freq[item_b]
             max_conf = max(conf_a_b, conf_b_a)
 
-            # Lift = P(A & B) / (P(A) * P(B))
             lift = (count / total_baskets) / ((item_freq[item_a] / total_baskets) * (item_freq[item_b] / total_baskets))
 
             results.append({
@@ -60,10 +56,7 @@ def get_basket_co_purchases(min_pairs: int = 4) -> List[Dict[str, Any]]:
     return results[:10]
 
 def get_day_of_week_patterns() -> List[Dict[str, Any]]:
-    """
-    Identifies customer buying patterns across days of the week:
-    Shows how demand shifts between Weekdays (staples/essentials) and Weekends (treats/parties/bulk).
-    """
+    """Weekday vs Weekend shopping shifts."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -80,7 +73,6 @@ def get_day_of_week_patterns() -> List[Dict[str, Any]]:
     """)
     rows = {r["day_of_week"]: dict(r) for r in cursor.fetchall()}
 
-    # Top selling product by day
     top_items_by_day = {}
     for d in days_order:
         cursor.execute("""
@@ -115,8 +107,66 @@ def get_day_of_week_patterns() -> List[Dict[str, Any]]:
 
     return result
 
+def get_weather_impact_analysis() -> List[Dict[str, Any]]:
+    """
+    Analyzes how different weather conditions directly influence item demand.
+    Extracted from the 'weather' column on the notepad.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT weather, COUNT(DISTINCT sale_date) as days_count
+        FROM sale_items
+        GROUP BY weather
+    """)
+    weather_days = {r["weather"]: max(1, r["days_count"]) for r in cursor.fetchall()}
+
+    cursor.execute("""
+        SELECT weather, product_name, category, SUM(quantity) as total_qty
+        FROM sale_items
+        GROUP BY weather, product_name
+        ORDER BY total_qty DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    weather_grouped = defaultdict(list)
+    for r in rows:
+        w = r["weather"]
+        days = weather_days.get(w, 1)
+        daily_rate = round(r["total_qty"] / days, 1)
+        weather_grouped[w].append({
+            "product_name": r["product_name"],
+            "category": r["category"],
+            "avg_daily_qty": daily_rate
+        })
+
+    insights = []
+    for w, items in weather_grouped.items():
+        if w in ["Rainy", "Hot", "Cold", "Sunny"]:
+            top_items = sorted(items, key=lambda x: x["avg_daily_qty"], reverse=True)[:3]
+            theme = ""
+            if w == "Rainy":
+                theme = "Rain Spikes: High demand for hot tea, instant comfort foods (Maggi), and frying staples."
+            elif w == "Hot":
+                theme = "Heat Spikes: High demand for chilled soft drinks, dahi, and energy beverages."
+            elif w == "Cold":
+                theme = "Winter Spikes: High demand for ghee, mustard oil, and morning hot beverages."
+            else:
+                theme = "Sunny / Normal: Balanced daily household replenishment."
+
+            insights.append({
+                "weather": w,
+                "days_observed": weather_days.get(w, 0),
+                "behavior_theme": theme,
+                "top_products": top_items
+            })
+
+    return insights
+
 def get_time_of_day_patterns() -> List[Dict[str, Any]]:
-    """Buying shifts across Morning, Afternoon, and Evening."""
+    """Buying shifts across Morning, Afternoon, and Evening based on notepad time."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -131,7 +181,6 @@ def get_time_of_day_patterns() -> List[Dict[str, Any]]:
     """)
     rows = [dict(r) for r in cursor.fetchall()]
 
-    # Find dominant categories per period
     for r in rows:
         cursor.execute("""
             SELECT category, SUM(quantity) as qty
@@ -148,14 +197,7 @@ def get_time_of_day_patterns() -> List[Dict[str, Any]]:
     return rows
 
 def get_changing_trend_patterns() -> Dict[str, Any]:
-    """
-    Detects changing customer preferences by comparing the most recent 30 days
-    against the previous 30-day window (Period-over-Period Momentum).
-    Flags:
-    - Surging Products (Fastest growing demand)
-    - Declining Products (Fading demand)
-    - Shifting Categories
-    """
+    """Momentum detection (recent 30d vs prior 30d)."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -166,7 +208,6 @@ def get_changing_trend_patterns() -> Dict[str, Any]:
     d_prior_end = (today - timedelta(days=31)).strftime("%Y-%m-%d")
     d_prior_start = (today - timedelta(days=60)).strftime("%Y-%m-%d")
 
-    # Recent 30 days sales
     cursor.execute("""
         SELECT product_name, category, SUM(quantity) as recent_qty, SUM(total_amount) as recent_rev
         FROM sale_items
@@ -175,7 +216,6 @@ def get_changing_trend_patterns() -> Dict[str, Any]:
     """, (d_recent_start, d_recent_end))
     recent_map = {r["product_name"]: dict(r) for r in cursor.fetchall()}
 
-    # Prior 30 days sales
     cursor.execute("""
         SELECT product_name, category, SUM(quantity) as prior_qty, SUM(total_amount) as prior_rev
         FROM sale_items
@@ -194,7 +234,6 @@ def get_changing_trend_patterns() -> Dict[str, Any]:
         p_qty = prior_map.get(p, {}).get("prior_qty", 0.0)
         category = recent_map.get(p, {}).get("category") or prior_map.get(p, {}).get("category") or "Other"
 
-        # Calculate momentum percentage
         if p_qty > 0:
             growth_pct = round(((r_qty - p_qty) / p_qty) * 100, 1)
         else:
@@ -210,7 +249,6 @@ def get_changing_trend_patterns() -> Dict[str, Any]:
             "is_declining": growth_pct <= -10.0
         })
 
-    # Sort
     surging_items = sorted([g for g in growth_analysis if g["is_surging"]], key=lambda x: x["growth_pct"], reverse=True)
     declining_items = sorted([g for g in growth_analysis if g["is_declining"]], key=lambda x: x["growth_pct"])
 
@@ -221,7 +259,7 @@ def get_changing_trend_patterns() -> Dict[str, Any]:
     }
 
 def get_historical_monthly_summary() -> List[Dict[str, Any]]:
-    """Monthly progression of revenue, volume, and basket size over past data."""
+    """Monthly progression of revenue, volume, and basket size."""
     conn = get_connection()
     cursor = conn.cursor()
 
