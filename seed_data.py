@@ -88,124 +88,122 @@ BASKET_PATTERNS = [
 def seed_database():
     init_db()
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        with conn.cursor() as cur:
+            # Check if historical transactions already exist in Supabase
+            cur.execute("SELECT COUNT(*) FROM sale_items;")
+            existing_count = cur.fetchone()["count"]
 
-    for item in CATALOG_PRODUCTS:
-        aliases_json = json.dumps(item["aliases"])
-        cursor.execute("""
-            INSERT OR REPLACE INTO catalog_items (name, category, standard_unit, default_price, seasonality_tag, aliases)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (item["name"], item["category"], item["unit"], item["price"], item["season"], aliases_json))
+            if existing_count > 0:
+                print(f"[Supabase] Historical transactions already seeded ({existing_count} rows). Skipping.")
+                return
 
-    conn.commit()
+            print("[Supabase] Seeding 180 days with sale_no, time, weather, and festival data into PostgreSQL...")
 
-    print("Seeding 180 days with sale_no, time, weather, and festival columns...")
+            today = datetime.now()
+            days_to_seed = 180
+            item_lookup = {p["name"]: p for p in CATALOG_PRODUCTS}
+            days_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-    today = datetime.now()
-    days_to_seed = 180
-    item_lookup = {p["name"]: p for p in CATALOG_PRODUCTS}
-    days_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            for day_offset in range(days_to_seed, -1, -1):
+                sale_dt = today - timedelta(days=day_offset)
+                sale_date_str = sale_dt.strftime("%Y-%m-%d")
+                month_str = sale_dt.strftime("%Y-%m")
+                day_of_week = days_names[sale_dt.weekday()]
+                month_int = sale_dt.month
 
-    for day_offset in range(days_to_seed, -1, -1):
-        sale_dt = today - timedelta(days=day_offset)
-        sale_date_str = sale_dt.strftime("%Y-%m-%d")
-        month_str = sale_dt.strftime("%Y-%m")
-        day_of_week = days_names[sale_dt.weekday()]
-        month_int = sale_dt.month
+                if month_int in [5, 6]:
+                    day_weather = random.choice(["Hot", "Hot", "Sunny"])
+                    day_festival = "None"
+                elif month_int in [7, 8]:
+                    day_weather = random.choice(["Rainy", "Rainy", "Humid", "Overcast"])
+                    day_festival = "None"
+                elif month_int in [10, 11]:
+                    day_weather = "Pleasant"
+                    day_festival = random.choice(["Navratri Day 1", "Diwali Prep", "Dhanteras", "None", "None"])
+                elif month_int in [12, 1]:
+                    day_weather = "Cold"
+                    day_festival = "Makar Sankranti" if month_int == 1 and sale_dt.day == 14 else "None"
+                elif month_int == 3:
+                    day_weather = "Sunny"
+                    day_festival = "Holi" if sale_dt.day == 20 else "None"
+                else:
+                    day_weather = "Normal"
+                    day_festival = "None"
 
-        # Assign Weather & Festival dynamically
-        if month_int in [5, 6]:
-            day_weather = random.choice(["Hot", "Hot", "Sunny"])
-            day_festival = "None"
-        elif month_int in [7, 8]:
-            day_weather = random.choice(["Rainy", "Rainy", "Humid", "Overcast"])
-            day_festival = "None"
-        elif month_int in [10, 11]:
-            day_weather = "Pleasant"
-            day_festival = random.choice(["Navratri Day 1", "Diwali Prep", "Dhanteras", "None", "None"])
-        elif month_int in [12, 1]:
-            day_weather = "Cold"
-            day_festival = "Makar Sankranti" if month_int == 1 and sale_dt.day == 14 else "None"
-        elif month_int == 3:
-            day_weather = "Sunny"
-            day_festival = "Holi" if sale_dt.day == 20 else "None"
-        else:
-            day_weather = "Normal"
-            day_festival = "None"
+                timeline_prog = 1.0 - (day_offset / days_to_seed)
+                is_weekend = day_of_week in ["Saturday", "Sunday"]
+                num_sales = random.randint(14, 20) if is_weekend else random.randint(10, 14)
 
-        timeline_prog = 1.0 - (day_offset / days_to_seed)
-        is_weekend = day_of_week in ["Saturday", "Sunday"]
-        num_sales = random.randint(18, 26) if is_weekend else random.randint(12, 18)
+                cur.execute("""
+                    INSERT INTO sales_batches (batch_date, weather, festival, raw_json, items_count, total_revenue)
+                    VALUES (%s, %s, %s, '{}'::jsonb, 0, 0.0)
+                    RETURNING id;
+                """, (sale_date_str, day_weather, day_festival))
+                batch_id = cur.fetchone()["id"]
 
-        cursor.execute("""
-            INSERT INTO sales_batches (batch_date, weather, festival, created_at, raw_json, items_count, total_revenue)
-            VALUES (?, ?, ?, ?, ?, 0, 0.0)
-        """, (sale_date_str, day_weather, day_festival, f"{sale_date_str} 22:00:00", "{}"))
-        batch_id = cursor.lastrowid
+                batch_rev = 0.0
+                batch_items = 0
 
-        batch_rev = 0.0
-        batch_items = 0
+                for s_no in range(1, num_sales + 1):
+                    basket_id = f"BSK-{sale_date_str}-{s_no}"
+                    pattern = random.choice(BASKET_PATTERNS)
+                    sale_time = pattern["time"]
+                    time_period = pattern["time_period"]
 
-        for s_no in range(1, num_sales + 1):
-            basket_id = f"BSK-{sale_date_str}-{s_no}"
-            pattern = random.choice(BASKET_PATTERNS)
-            sale_time = pattern["time"]
-            time_period = pattern["time_period"]
+                    for item_name, base_qty, pack_size in pattern["items"]:
+                        p_info = item_lookup[item_name]
 
-            for item_name, base_qty, pack_size in pattern["items"]:
-                p_info = item_lookup[item_name]
+                        w_mult = 1.0
+                        if day_weather == "Rainy" and ("Tea" in item_name or "Maggi" in item_name):
+                            w_mult = 1.7
+                        elif day_weather == "Hot" and ("Cold Drink" in item_name or "Sting" in item_name or "Thums" in item_name or "Dahi" in item_name):
+                            w_mult = 1.8
+                        elif day_weather == "Cold" and ("Ghee" in item_name or "Tea" in item_name or "Oil" in item_name):
+                            w_mult = 1.5
 
-                # Weather surge
-                w_mult = 1.0
-                if day_weather == "Rainy" and ("Tea" in item_name or "Maggi" in item_name or "Pakoda" in item_name):
-                    w_mult = 1.7
-                elif day_weather == "Hot" and ("Cold Drink" in item_name or "Sting" in item_name or "Thums" in item_name or "Dahi" in item_name):
-                    w_mult = 1.8
-                elif day_weather == "Cold" and ("Ghee" in item_name or "Tea" in item_name or "Oil" in item_name):
-                    w_mult = 1.5
+                        f_mult = 1.0
+                        if "Navratri" in day_festival and ("Ghee" in item_name or "Dahi" in item_name):
+                            f_mult = 1.9
+                        elif "Diwali" in day_festival and ("Sugar" in item_name or "Besan" in item_name or "Ghee" in item_name):
+                            f_mult = 2.4
 
-                # Festival surge
-                f_mult = 1.0
-                if "Navratri" in day_festival and ("Ghee" in item_name or "Dahi" in item_name):
-                    f_mult = 1.9
-                elif "Diwali" in day_festival and ("Sugar" in item_name or "Besan" in item_name or "Ghee" in item_name):
-                    f_mult = 2.4
+                        trend_mult = 1.0 + (p_info["trend_bias"] - 1.0) * timeline_prog
+                        chance = w_mult * f_mult * trend_mult
+                        if chance < 0.6 and random.random() > chance:
+                            continue
 
-                trend_mult = 1.0 + (p_info["trend_bias"] - 1.0) * timeline_prog
-                chance = w_mult * f_mult * trend_mult
-                if chance < 0.6 and random.random() > chance:
-                    continue
+                        qty = float(base_qty)
+                        unit_price = p_info["price"]
+                        line_total = round(qty * unit_price, 2)
 
-                qty = float(base_qty)
-                unit_price = p_info["price"]
-                line_total = round(qty * unit_price, 2)
+                        cur.execute("""
+                            INSERT INTO sale_items (
+                                batch_id, sale_no, sale_date, sale_time, time_period,
+                                month_str, day_of_week, weather, festival,
+                                basket_id, product_name, category, quantity, unit, pack_size,
+                                unit_price, total_amount
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                        """, (
+                            batch_id, s_no, sale_date_str, sale_time, time_period,
+                            month_str, day_of_week, day_weather, day_festival,
+                            basket_id, item_name, p_info["category"], qty, p_info["unit"], pack_size,
+                            unit_price, line_total
+                        ))
 
-                cursor.execute("""
-                    INSERT INTO sale_items (
-                        batch_id, sale_no, sale_date, sale_time, time_period,
-                        month_str, day_of_week, weather, festival,
-                        basket_id, product_name, category, quantity, unit, pack_size,
-                        unit_price, total_amount
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    batch_id, s_no, sale_date_str, sale_time, time_period,
-                    month_str, day_of_week, day_weather, day_festival,
-                    basket_id, item_name, p_info["category"], qty, p_info["unit"], pack_size,
-                    unit_price, line_total
-                ))
+                        batch_rev += line_total
+                        batch_items += 1
 
-                batch_rev += line_total
-                batch_items += 1
+                cur.execute("""
+                    UPDATE sales_batches
+                    SET items_count = %s, total_revenue = %s
+                    WHERE id = %s;
+                """, (batch_items, round(batch_rev, 2), batch_id))
 
-        cursor.execute("""
-            UPDATE sales_batches
-            SET items_count = ?, total_revenue = ?
-            WHERE id = ?
-        """, (batch_items, round(batch_rev, 2), batch_id))
-
-    conn.commit()
-    conn.close()
-    print("Database seeded with sale_no, time, weather, and festival data!")
+            conn.commit()
+            print("[Supabase] 180 days of transaction data seeded successfully into PostgreSQL!")
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     seed_database()

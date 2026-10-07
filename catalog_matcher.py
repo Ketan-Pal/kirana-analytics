@@ -12,27 +12,32 @@ def clean_text(text: str) -> str:
     return " ".join(text.split())
 
 def match_catalog_item(raw_name: str, standard_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Matches raw or standardized item text against known catalog products."""
+    """Matches raw or standardized item text against known catalog products in Supabase."""
     clean_raw = clean_text(raw_name)
     clean_std = clean_text(standard_name or "")
 
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, name, category, standard_unit, default_price, seasonality_tag, aliases FROM catalog_items")
-    all_items = cursor.fetchall()
-    conn.close()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name, category, standard_unit, default_price, seasonality_tag, aliases FROM catalog_items")
+            all_items = cur.fetchall()
+    finally:
+        conn.close()
 
     best_item = None
     best_score = 0.0
 
-    for row in all_items:
-        item = dict(row)
+    for item in all_items:
         item_name_clean = clean_text(item["name"])
+        raw_aliases = item["aliases"]
         aliases = []
-        try:
-            aliases = [clean_text(a) for a in json.loads(item["aliases"] or "[]")]
-        except Exception:
-            pass
+        if isinstance(raw_aliases, list):
+            aliases = [clean_text(str(a)) for a in raw_aliases]
+        elif isinstance(raw_aliases, str):
+            try:
+                aliases = [clean_text(a) for a in json.loads(raw_aliases or "[]")]
+            except Exception:
+                pass
 
         # Exact alias match
         if clean_raw in aliases or (clean_std and clean_std in aliases):
@@ -60,27 +65,22 @@ def match_catalog_item(raw_name: str, standard_name: Optional[str] = None) -> Op
     return None
 
 def auto_register_catalog_item(raw_name: str, standard_name: str, category: str, unit_price: float, unit: str) -> Dict[str, Any]:
-    """Auto-creates new item in catalog if unknown."""
+    """Auto-creates new item in Supabase catalog_items if unknown."""
     conn = get_connection()
-    cursor = conn.cursor()
-
-    name = standard_name.strip() if standard_name else raw_name.strip()
-    price = unit_price if unit_price > 0 else 50.0
-    aliases = json.dumps([clean_text(raw_name), clean_text(standard_name)])
-
     try:
-        cursor.execute("""
-            INSERT INTO catalog_items (name, category, standard_unit, default_price, seasonality_tag, aliases)
-            VALUES (?, ?, ?, ?, 'All-Season', ?)
-        """, (name, category or "Other", unit or "packet", price, aliases))
-        item_id = cursor.lastrowid
-        conn.commit()
-    except Exception:
-        cursor.execute("SELECT id FROM catalog_items WHERE name = ?", (name,))
-        row = cursor.fetchone()
-        item_id = row[0] if row else 1
+        name = standard_name.strip() if standard_name else raw_name.strip()
+        price = unit_price if unit_price > 0 else 50.0
+        aliases_json = json.dumps([clean_text(raw_name), clean_text(standard_name)])
 
-    cursor.execute("SELECT * FROM catalog_items WHERE id = ?", (item_id,))
-    new_item = dict(cursor.fetchone())
-    conn.close()
-    return new_item
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO catalog_items (name, category, standard_unit, default_price, seasonality_tag, aliases)
+                VALUES (%s, %s, %s, %s, 'All-Season', %s::jsonb)
+                ON CONFLICT (name) DO UPDATE SET default_price = EXCLUDED.default_price
+                RETURNING id, name, category, standard_unit, default_price, seasonality_tag;
+            """, (name, category or "Other", unit or "packet", price, aliases_json))
+            new_item = cur.fetchone()
+        conn.commit()
+        return dict(new_item)
+    finally:
+        conn.close()

@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from database import get_connection
 
-# Comprehensive Indian Retail Festive Demand Calendar
 FESTIVAL_CALENDAR = [
     {
         "name": "Diwali & Dhanteras Festive Surge",
@@ -74,50 +73,45 @@ FESTIVAL_CALENDAR = [
 
 def get_next_month_forecast() -> Dict[str, Any]:
     """
-    Predicts next month's demand by SKU and Category:
-    Combines baseline 30-day velocity, growth momentum, and seasonal weighting.
+    Predicts next month's demand by SKU and Category from Supabase PostgreSQL.
     """
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        today = datetime.now()
+        d_30_ago = (today - timedelta(days=30)).strftime("%Y-%m-%d")
 
-    # Get past 30 days data
-    today = datetime.now()
-    d_30_ago = (today - timedelta(days=30)).strftime("%Y-%m-%d")
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    product_name,
+                    category,
+                    unit,
+                    unit_price,
+                    SUM(quantity) as current_monthly_qty,
+                    SUM(total_amount) as current_monthly_rev
+                FROM sale_items
+                WHERE sale_date >= %s
+                GROUP BY product_name, category, unit, unit_price;
+            """, (d_30_ago,))
+            rows = cur.fetchall()
 
-    cursor.execute("""
-        SELECT 
-            product_name,
-            category,
-            unit,
-            unit_price,
-            SUM(quantity) as current_monthly_qty,
-            SUM(total_amount) as current_monthly_rev
-        FROM sale_items
-        WHERE sale_date >= ?
-        GROUP BY product_name
-    """, (d_30_ago,))
-    rows = cursor.fetchall()
+            d_60_ago = (today - timedelta(days=60)).strftime("%Y-%m-%d")
+            cur.execute("""
+                SELECT 
+                    product_name,
+                    SUM(quantity) as prior_qty
+                FROM sale_items
+                WHERE sale_date BETWEEN %s AND %s
+                GROUP BY product_name;
+            """, (d_60_ago, d_30_ago))
+            prior_map = {r["product_name"]: float(r["prior_qty"]) for r in cur.fetchall()}
+    finally:
+        conn.close()
 
-    # Prior 30-60 days for trend rate
-    d_60_ago = (today - timedelta(days=60)).strftime("%Y-%m-%d")
-    cursor.execute("""
-        SELECT 
-            product_name,
-            SUM(quantity) as prior_qty
-        FROM sale_items
-        WHERE sale_date BETWEEN ? AND ?
-        GROUP BY product_name
-    """, (d_60_ago, d_30_ago))
-    prior_map = {r["product_name"]: r["prior_qty"] for r in cursor.fetchall()}
-
-    conn.close()
-
-    # Target Next Month metadata
     next_month_dt = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
     next_month_name = next_month_dt.strftime("%B %Y")
     next_month_int = next_month_dt.month
 
-    # Seasonal index for next month
     if next_month_int in [3, 4, 5, 6]:
         target_season = "Summer"
     elif next_month_int in [7, 8, 9]:
@@ -133,22 +127,18 @@ def get_next_month_forecast() -> Dict[str, Any]:
 
     for r in rows:
         name = r["product_name"]
-        curr_qty = r["current_monthly_qty"]
+        curr_qty = float(r["current_monthly_qty"])
         prior_qty = prior_map.get(name, curr_qty)
-        price = r["unit_price"]
+        price = float(r["unit_price"])
 
-        # Calculate momentum multiplier
         if prior_qty > 0:
             growth_rate = (curr_qty - prior_qty) / prior_qty
-            # Dampen extreme spikes
             damped_growth = max(-0.25, min(0.35, growth_rate))
         else:
             damped_growth = 0.05
 
-        # Base forecasted quantity
         predicted_qty = round(curr_qty * (1.0 + damped_growth))
 
-        # Apply upcoming seasonal lift
         seasonal_lift = 1.0
         cat = r["category"]
         if target_season == "Summer" and (cat == "Beverages" or "Dahi" in name):
@@ -189,21 +179,17 @@ def get_next_month_forecast() -> Dict[str, Any]:
     }
 
 def get_seasonal_and_festival_roadmap() -> Dict[str, Any]:
-    """
-    Provides multi-month forward roadmap for upcoming seasons and major Indian festivals.
-    """
+    """Provides forward roadmap for upcoming seasons and major Indian festivals."""
     today = datetime.now()
     current_year = today.year
 
     upcoming_festivals = []
 
     for fest in FESTIVAL_CALENDAR:
-        # Approximate target date
         target_year = current_year if fest["month"] >= today.month else current_year + 1
         fest_date = datetime(target_year, fest["month"], fest["day"])
         days_until = (fest_date - today).days
 
-        # Format urgency
         if days_until < 0:
             days_until += 365
 
