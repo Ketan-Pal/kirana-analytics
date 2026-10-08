@@ -15,14 +15,17 @@ No unnecessary stock taking or credit ledger overhead—just pure **retail intel
 
 ```
 kirana-analytics/
-├── database.py           # Module 2: High-speed time-series and transaction store
-├── catalog_matcher.py    # Module 2: Fuzzy alias & product resolver
-├── seed_data.py          # Module 2: 6 months of historical multi-season Kirana transactions
-├── ingestion.py          # Module 1->2: Ingests Gemini mobile JSON into pattern store
-├── analytics.py          # Module 3: Basket co-purchases, day-of-week & changing trends
-├── forecasting.py        # Module 4: Next-month SKU projections, seasonal & festival calendar
-├── main.py               # Module 5: FastAPI backend & modern responsive UI
-├── run.bat               # Windows double-click launcher
+├── migrations/           # Flyway-style SQL migrations (V1, V2, V3)
+├── migration_runner.py   # Autonomous database migration runner
+├── database.py           # Supabase PostgreSQL connection pooler (IPv4)
+├── catalog_matcher.py    # Fuzzy alias & canonical product resolver
+├── seed_data.py          # Synthetic multi-season Kirana transactions
+├── ingestion.py          # Daily Gemini notepad JSON parser & batch pipeline
+├── analytics.py          # Basket co-purchases, day-of-week & changing trends
+├── forecasting.py        # Next-month SKU projections, seasonal & festival calendar
+├── gemini_enricher.py    # Gemini AI FMCG retail intelligence enrichment layer
+├── main.py               # FastAPI backend & interactive dark-mode dashboard
+├── run.bat               # Windows launcher
 └── README.md             # Guide & documentation
 ```
 
@@ -61,6 +64,14 @@ kirana-analytics/
   - Forward roadmap for Diwali, Navratri, Holi, Makar Sankranti, Eid, etc.
   - Shows days remaining, urgency status (Critical / Upcoming / Advance), and item-specific surge forecasts (+180% Sugar, +240% Besan, +210% Ghee) so you can order at wholesale before vendor prices rise.
 
+### 4. ✨ Gemini AI Retail Strategy Advisor (Autonomous FMCG Consultancy)
+- **Executive Strategic Brief:** Summarizes current store health and counter priorities in plain English with authentic Indian Kirana terminology.
+- **Weather Tactical Directives:** Immediate counter and shelf positioning directives triggered by real-time rain/heat/cold correlations.
+- **High-ROI Merchandising Combos:** Practical co-purchase bundles with specific margin-protective promotions (e.g. *"₹5 off on combo"*) and micro-shelf placement instructions designed for 150–300 sq.ft. Kirana formats.
+- **Distributor Procurement & Timing Tips:** Proactive alerts on wholesale price surges, lead-time bottlenecks, and minimum order quantities before festival rushes.
+- **Why-Behind-The-Trend Intelligence:** Qualitative retail context explaining *why* specific SKUs are surging or cooling in the neighbourhood.
+- **Zero-Latency Cloud Caching:** Responses are cached in Supabase (`ai_insights_cache`) and automatically refreshed upon each daily notepad ingestion or manual button press.
+
 ---
 
 ## 🔄 Daily 2-Minute Workflow
@@ -68,4 +79,4 @@ kirana-analytics/
 1. **Snap Daily Notepad:** Take a photo of your handwritten sales notepad in the **Google Gemini Mobile App**.
 2. **Run Prompt:** Paste the prompt from [`C:\Users\ketan\kirana_gemini_prompt.md`](file:///C:/Users/ketan/kirana_gemini_prompt.md) to receive clean JSON.
 3. **Ingest to Dashboard:** Open `http://localhost:8000`, click **"Ingest Gemini Notepad JSON"**, and paste.
-4. **Instant Model Update:** The predictive models, basket patterns, and growth trends update automatically!
+4. **Autonomous AI Synthesis:** The predictive models, basket patterns, growth trends, and **Gemini AI Retail Strategy Advisor** re-synthesize and update automatically!

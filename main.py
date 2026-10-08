@@ -19,6 +19,7 @@ from forecasting import (
     get_seasonal_and_festival_roadmap
 )
 from ingestion import ingest_gemini_sales_json
+from gemini_enricher import enrich_analytics_with_gemini
 
 app = FastAPI(title="Kirana Demand Pattern & Predictive Forecasting", version="2.1.0")
 
@@ -68,6 +69,20 @@ def api_next_month_forecast():
 @app.get("/api/festival-roadmap")
 def api_festival_roadmap():
     return get_seasonal_and_festival_roadmap()
+
+@app.get("/api/ai-insights")
+def api_ai_insights():
+    try:
+        return enrich_analytics_with_gemini(force_refresh=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/ai-insights/refresh")
+def api_ai_insights_refresh():
+    try:
+        return enrich_analytics_with_gemini(force_refresh=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ingest")
 def api_ingest(payload: Dict[str, Any]):
@@ -151,6 +166,124 @@ def index_page():
         <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Next Festival / Surge Event</span>
         <div class="mt-2 text-lg font-black text-rose-400 truncate" id="kpi-next-fest">-</div>
         <span class="text-xs text-rose-300 font-semibold" id="kpi-fest-days">0 Days Remaining</span>
+      </div>
+    </div>
+
+    <!-- ✨ Gemini AI Retail Strategy Advisor Section -->
+    <div class="bg-gradient-to-br from-purple-950/50 via-slate-900 to-slate-900 border border-purple-800/40 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
+      <!-- Ambient background glow -->
+      <div class="absolute -right-16 -top-16 w-56 h-56 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <!-- Advisor Header -->
+      <div class="flex flex-wrap justify-between items-start gap-4 mb-5 relative z-10">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <span class="flex h-3 w-3 relative">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+            </span>
+            <h2 class="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+              ✨ Gemini AI Retail Strategy Advisor
+              <span id="ai-model-badge" class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-wider">
+                Loading...
+              </span>
+            </h2>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">
+            Autonomous FMCG intelligence synthesizing basket co-purchases, weather spikes, distributor timing & SKU momentum
+          </p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <span id="ai-last-cached" class="text-[11px] text-slate-400 font-medium">Synced: --</span>
+          <button id="ai-refresh-btn" onclick="triggerManualAiRefresh()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 active:scale-95 disabled:opacity-50">
+            <svg id="ai-refresh-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <span id="ai-refresh-text">⚡ Re-Synthesize Strategy</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Top Row: Executive Brief & Tactical Weather Directive -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5 relative z-10">
+        <!-- Executive Brief -->
+        <div class="lg:col-span-2 bg-slate-950/70 border border-purple-900/30 rounded-2xl p-4 flex flex-col justify-between">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-purple-300 shrink-0 text-lg shadow-inner">
+              🧠
+            </div>
+            <div>
+              <span class="text-[11px] font-bold uppercase tracking-wider text-purple-400">Daily Executive Strategy Brief</span>
+              <p id="ai-exec-summary" class="text-xs text-slate-200 mt-1.5 leading-relaxed font-normal">
+                Synthesizing retail strategic advice from store patterns...
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Weather Tactical Directive -->
+        <div class="bg-slate-950/70 border border-sky-900/30 rounded-2xl p-4 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1">
+                ⛅ Weather Directive
+              </span>
+              <span id="ai-weather-headline" class="text-[10px] font-semibold text-slate-300 bg-sky-950/60 px-2 py-0.5 rounded-full border border-sky-800/40 truncate max-w-[140px]">-</span>
+            </div>
+            <p id="ai-weather-directive" class="text-xs text-slate-300 leading-snug">
+              Analyzing current weather correlations...
+            </p>
+          </div>
+          <div class="mt-2.5 pt-2 border-t border-slate-800/80">
+            <span class="text-[10px] text-slate-500 font-semibold block mb-1 uppercase tracking-wider">Priority Counter SKUs:</span>
+            <div id="ai-weather-items" class="flex flex-wrap gap-1">
+              <span class="text-[10px] text-slate-400">Loading...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- High-ROI Merchandising Combos (Grid) -->
+      <div class="mb-5 relative z-10">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
+            🎯 AI Merchandising Combos & Placement Directives
+          </h3>
+          <span class="text-[11px] text-slate-400">Actionable layout for 150-300 sq.ft. Kirana formats</span>
+        </div>
+        <div id="ai-combos-container" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="p-4 bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-500 text-center">Loading AI merchandising combos...</div>
+        </div>
+      </div>
+
+      <!-- 2-Col: Distributor Procurement & Trend Context -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 relative z-10">
+        <!-- Distributor Procurement Advice -->
+        <div class="bg-slate-950/70 border border-amber-900/30 rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              📦 Distributor Procurement & Timing Tips
+            </h3>
+            <span class="text-[10px] text-slate-400">Lead times & price surge alerts</span>
+          </div>
+          <div id="ai-procurement-container" class="space-y-2.5">
+            <div class="text-xs text-slate-500 p-2">Loading procurement tips...</div>
+          </div>
+        </div>
+
+        <!-- Why-Behind-The-Trend Intelligence -->
+        <div class="bg-slate-950/70 border border-indigo-900/30 rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
+              🔍 "Why-Behind-The-Trend" FMCG Context
+            </h3>
+            <span class="text-[10px] text-slate-400">Real-world neighborhood drivers</span>
+          </div>
+          <div id="ai-trends-container" class="space-y-2.5">
+            <div class="text-xs text-slate-500 p-2">Loading trend explanations...</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -482,6 +615,141 @@ def index_page():
             </div>
           </div>
         `).join('');
+      }
+
+      // 8. AI Retail Strategy Advisor
+      await loadAIInsights(false);
+    }
+
+    async function loadAIInsights(force = false) {
+      try {
+        const url = force ? '/api/ai-insights/refresh' : '/api/ai-insights';
+        const method = force ? 'POST' : 'GET';
+        const res = await fetch(url, { method });
+        const data = await res.json();
+        if (!data) return;
+
+        // Model badge
+        const modelBadge = document.getElementById('ai-model-badge');
+        if (modelBadge) {
+          modelBadge.innerText = data._model || 'Gemini 3.8 Flash';
+          if (data._is_fallback) {
+            modelBadge.innerText += ' (Offline Fallback)';
+            modelBadge.className = 'text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider';
+          } else {
+            modelBadge.className = 'text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-wider';
+          }
+        }
+
+        // Cache timestamp
+        const lastCached = document.getElementById('ai-last-cached');
+        if (lastCached && data._cached_at) {
+          const dt = new Date(data._cached_at);
+          lastCached.innerText = 'Synced: ' + dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Executive brief
+        const execSummary = document.getElementById('ai-exec-summary');
+        if (execSummary && data.daily_executive_summary) {
+          execSummary.innerText = data.daily_executive_summary;
+        }
+
+        // Weather directive
+        if (data.weather_tactical_action) {
+          const wHeadline = document.getElementById('ai-weather-headline');
+          if (wHeadline) wHeadline.innerText = data.weather_tactical_action.headline || 'Action Alert';
+          const wDirective = document.getElementById('ai-weather-directive');
+          if (wDirective) wDirective.innerText = data.weather_tactical_action.action_directive || '';
+          const wItems = document.getElementById('ai-weather-items');
+          if (wItems && Array.isArray(data.weather_tactical_action.priority_items)) {
+            wItems.innerHTML = data.weather_tactical_action.priority_items.map(item => `
+              <span class="bg-sky-950/70 border border-sky-800/40 text-sky-300 text-[10px] font-semibold px-2 py-0.5 rounded-md">${item}</span>
+            `).join('');
+          }
+        }
+
+        // Merchandising combos
+        const combosContainer = document.getElementById('ai-combos-container');
+        if (combosContainer && Array.isArray(data.merchandising_combos) && data.merchandising_combos.length > 0) {
+          combosContainer.innerHTML = data.merchandising_combos.map(c => `
+            <div class="p-3.5 bg-slate-950/70 rounded-2xl border border-purple-900/30 flex flex-col justify-between hover:border-purple-600/40 transition-all">
+              <div>
+                <div class="flex items-start justify-between gap-1 mb-2">
+                  <span class="font-bold text-xs text-purple-300">${c.combo_name}</span>
+                  <span class="bg-purple-500/20 text-purple-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-500/30 shrink-0">Promo Deal</span>
+                </div>
+                <div class="text-[11px] font-semibold text-slate-200 mb-1.5 flex items-center gap-1.5">
+                  <span>🛒</span>
+                  <span class="text-white">${c.items}</span>
+                </div>
+                <p class="text-[11px] text-slate-400 mb-2 leading-relaxed">${c.consumer_behavior}</p>
+              </div>
+              <div class="pt-2 border-t border-slate-800/80 space-y-1">
+                <div class="text-[10px] text-amber-300 font-semibold flex items-center gap-1">
+                  <span>🏷️</span> <span>${c.suggested_promo}</span>
+                </div>
+                <div class="text-[10px] text-slate-400 flex items-center gap-1">
+                  <span>📍</span> <span>${c.shelf_placement_directive}</span>
+                </div>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        // Procurement advice
+        const procContainer = document.getElementById('ai-procurement-container');
+        if (procContainer && Array.isArray(data.procurement_distributor_advice) && data.procurement_distributor_advice.length > 0) {
+          procContainer.innerHTML = data.procurement_distributor_advice.map(p => `
+            <div class="p-2.5 bg-slate-900/60 rounded-xl border border-amber-950/40">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-bold text-xs text-white">${p.product}</span>
+                <span class="text-[10px] text-amber-300 font-bold bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-800/40">Distributor Tip</span>
+              </div>
+              <p class="text-[11px] text-slate-200 font-medium mb-1">${p.recommended_action}</p>
+              <p class="text-[10px] text-slate-400 italic">💡 ${p.distributor_timing_tip}</p>
+            </div>
+          `).join('');
+        }
+
+        // Trend insights
+        const trendsContainer = document.getElementById('ai-trends-container');
+        if (trendsContainer && Array.isArray(data.trend_insights) && data.trend_insights.length > 0) {
+          trendsContainer.innerHTML = data.trend_insights.map(t => {
+            const isSurge = (t.trend_direction || '').toLowerCase().includes('surge') || (t.momentum || '').startsWith('+');
+            return `
+              <div class="p-2.5 bg-slate-900/60 rounded-xl border ${isSurge ? 'border-emerald-950/40' : 'border-rose-950/40'}">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-xs text-white">${t.product}</span>
+                  <span class="text-[10px] font-black px-2 py-0.5 rounded-md ${isSurge ? 'text-emerald-400 bg-emerald-950/60 border border-emerald-800/40' : 'text-rose-400 bg-rose-950/60 border border-rose-800/40'}">
+                    ${t.trend_direction} (${t.momentum})
+                  </span>
+                </div>
+                <p class="text-[11px] text-slate-300 leading-snug">${t.retail_explanation}</p>
+              </div>
+            `;
+          }).join('');
+        }
+
+      } catch (err) {
+        console.error("AI Insights load failed:", err);
+      }
+    }
+
+    async function triggerManualAiRefresh() {
+      const btn = document.getElementById('ai-refresh-btn');
+      const icon = document.getElementById('ai-refresh-icon');
+      const text = document.getElementById('ai-refresh-text');
+
+      if (btn) btn.disabled = true;
+      if (icon) icon.classList.add('animate-spin');
+      if (text) text.innerText = 'Consulting Gemini...';
+
+      try {
+        await loadAIInsights(true);
+      } finally {
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove('animate-spin');
+        if (text) text.innerText = '⚡ Re-Synthesize Strategy';
       }
     }
 

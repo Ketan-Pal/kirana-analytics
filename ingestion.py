@@ -137,7 +137,15 @@ def ingest_gemini_sales_json(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         conn.commit()
 
+        # Auto-enrich analytics cache with Gemini on ingestion
+        try:
+            from gemini_enricher import enrich_analytics_with_gemini
+            enrich_analytics_with_gemini(force_refresh=True)
+        except Exception as e:
+            print(f"[Ingestion] Warning: AI enrichment trigger failed: {e}")
+
         return {
+
             "batch_id": batch_id,
             "date": raw_date,
             "weather": day_weather,

@@ -66,3 +66,17 @@ flowchart TD
   Provides specific **Stocking Directives** for every SKU.
 - **Seasonal Multipliers:** Automatically applies demand lifts for Summer (beverages, curd), Monsoon (tea, instant snacks), and Winter (ghee, hot drinks).
 - **Festival Calendar Roadmap:** 12-month forward roadmap identifying upcoming festivals, days remaining, urgency status (Critical / Upcoming / Advance), and surge percentages (+180% Sugar, +240% Besan, +210% Ghee) so you can order at wholesale before vendor prices rise.
+
+---
+
+## 4. Architectural Decision Record (ADR): Festival Calendar Maintenance
+
+- **Decision:** Implement **Autonomous Annual AI Sync** via Google Gemini.
+- **Rationale:** Indian festivals (Diwali, Holi, Eid, Navratri) follow astronomical lunar calendars where Gregorian dates shift annually. Hardcoding requires yearly developer code changes.
+- **Production Implementation:**
+  - On January 1st of each year (or when a new calendar year is detected), the background service automatically queries Gemini for the confirmed Gregorian dates of major Indian festivals for that year.
+  - The results are autonomously inserted into the Supabase `festival_calendar` table.
+  - Requires **zero ongoing developer maintenance** post-production.
+  - Daily notepad annotations (`festival: Navratri Day 1`) serve as local ground-truth to validate and tune demand surge lead times.
+
+
