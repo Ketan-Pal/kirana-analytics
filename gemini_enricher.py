@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
+from config import settings
+from logging_config import get_logger
 from database import get_connection
 from analytics import (
     get_basket_co_purchases,
@@ -18,11 +20,10 @@ from forecasting import (
     get_seasonal_and_festival_roadmap,
 )
 
-ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
-load_dotenv(ENV_PATH)
+logger = get_logger("ai_enricher")
 
 CANDIDATE_MODELS = ["gemini-3.8-flash", "gemini-flash-lite-latest", "gemini-flash-latest"]
-PRIMARY_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+PRIMARY_MODEL = settings.gemini_model
 
 def get_cached_insights() -> Optional[Dict[str, Any]]:
     """Retrieves the latest cached AI insights from Supabase."""
@@ -46,7 +47,7 @@ def get_cached_insights() -> Optional[Dict[str, Any]]:
                 return data
             return None
     except Exception as e:
-        print(f"[AI Cache] Error reading cache: {e}")
+        logger.error(f"Error reading insights cache: {e}")
         return None
     finally:
         conn.close()
@@ -66,7 +67,7 @@ def save_insights_to_cache(insights: Dict[str, Any], model_used: str = PRIMARY_M
             """, (json.dumps(insights), model_used))
         conn.commit()
     except Exception as e:
-        print(f"[AI Cache] Error saving to cache: {e}")
+        logger.error(f"Error saving insights to cache: {e}")
     finally:
         conn.close()
 
@@ -197,9 +198,9 @@ def enrich_analytics_with_gemini(force_refresh: bool = False) -> Dict[str, Any]:
         "festivals": get_seasonal_and_festival_roadmap(),
     }
 
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = settings.gemini_api_key
     if not api_key:
-        print("[AI Enricher] GEMINI_API_KEY not configured. Using fallback.")
+        logger.warning("[AI Enricher] GEMINI_API_KEY not configured. Using fallback.")
         return generate_fallback_insights(context_data)
 
     prompt = build_synthesis_prompt(context_data)
@@ -237,14 +238,14 @@ def enrich_analytics_with_gemini(force_refresh: bool = False) -> Dict[str, Any]:
                 enriched_result["_is_fallback"] = False
 
                 save_insights_to_cache(enriched_result, model_name)
-                print(f"[AI Enricher] Successfully generated and cached AI insights using {model_name} in {latency_ms}ms")
+                logger.info(f"Successfully generated and cached AI insights using {model_name} in {latency_ms}ms")
                 return enriched_result
 
         except Exception as e:
             last_error = e
-            print(f"[AI Enricher] Model '{model_name}' attempt failed: {e}. Trying fallback model...")
+            logger.warning(f"Model '{model_name}' attempt failed: {e}. Trying fallback model...")
 
-    print(f"[AI Enricher] All Gemini model attempts failed ({last_error}). Falling back to baseline.")
+    logger.warning(f"All Gemini model attempts failed ({last_error}). Falling back to baseline.")
     fallback = generate_fallback_insights(context_data)
     fallback["_error"] = str(last_error)
     return fallback

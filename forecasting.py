@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from database import get_connection
+from logging_config import get_logger
+
+logger = get_logger("forecasting")
 
 FESTIVAL_CALENDAR = [
     {
@@ -223,7 +226,7 @@ def get_seasonal_and_festival_roadmap() -> Dict[str, Any]:
         if db_roadmap and db_roadmap.get("roadmap"):
             return db_roadmap
     except Exception as e:
-        print(f"[Roadmap] Fallback from database roadmap: {e}")
+        logger.warning(f"Fallback from database roadmap: {e}")
 
     # Fallback to local calendar if database table is initializing
     today = datetime.now()

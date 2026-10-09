@@ -4,15 +4,14 @@ import json
 import time
 from typing import Dict, Any, List, Optional
 import httpx
-from dotenv import load_dotenv
-
+import httpx
+from config import settings
+from logging_config import get_logger
 from database import get_connection
 from gemini_enricher import PRIMARY_MODEL, CANDIDATE_MODELS
 
-ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
-load_dotenv(ENV_PATH)
-
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+logger = get_logger("trend_crawler")
+GEMINI_API_KEY = settings.gemini_api_key
 
 def generate_search_queries(festival_name: str, year: int) -> List[str]:
     """Uses Gemini to formulate 3 high-yield FMCG market search queries for DuckDuckGo."""
@@ -51,7 +50,7 @@ Return ONLY a JSON array of 3 strings. Example:
                     if isinstance(queries, list) and len(queries) >= 2:
                         return queries[:3]
         except Exception as e:
-            print(f"[Trend Crawler] Query generation fallback from {model}: {e}")
+            logger.warning(f"Query generation fallback from {model}: {e}")
             continue
 
     # Fallback default queries
@@ -82,7 +81,7 @@ def fetch_duckduckgo_snippets(query: str, max_results: int = 4) -> List[Dict[str
                     if clean_t:
                         results.append({"query": query, "snippet": clean_t})
     except Exception as e:
-        print(f"[Trend Crawler] DuckDuckGo fetch warning for '{query}': {e}")
+        logger.warning(f"DuckDuckGo fetch warning for '{query}': {e}")
 
     return results
 
@@ -135,7 +134,7 @@ Return ONLY valid JSON matching this exact schema:
                     parsed["_snippets_count"] = len(snippets)
                     return parsed
         except Exception as e:
-            print(f"[Trend Crawler] Synthesis fallback from {model}: {e}")
+            logger.warning(f"Synthesis fallback from {model}: {e}")
             continue
 
     # Deterministic fallback

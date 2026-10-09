@@ -3,9 +3,12 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import httpx
+from config import settings
+from logging_config import get_logger
 from database import get_connection
 
-CALENDAR_API_BASE = "https://calendar-api-d7a8.onrender.com/v1/holidays"
+logger = get_logger("festival_service")
+CALENDAR_API_BASE = settings.calendar_api_base
 
 FESTIVAL_DEFINITIONS = [
     {
@@ -178,7 +181,7 @@ def sync_festival_calendar_if_needed(year: Optional[int] = None, force: bool = F
                 if resp.status_code == 200:
                     holidays_data = resp.json().get("data", [])
         except Exception as e:
-            print(f"[Festival Sync] Warning: External Calendar API unreachable: {e}. Falling back to baseline.")
+            logger.warning(f"External Calendar API unreachable: {e}. Falling back to baseline.")
 
         # Process each festival definition
         synced_count = 0
@@ -246,7 +249,7 @@ def get_festival_roadmap() -> Dict[str, Any]:
         if today.month >= 10:
             sync_festival_calendar_if_needed(current_year + 1)
     except Exception as e:
-        print(f"[Festival Roadmap] Auto-sync check warning: {e}")
+        logger.warning(f"Auto-sync check warning: {e}")
 
     conn = get_connection()
     try:

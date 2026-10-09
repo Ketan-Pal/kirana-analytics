@@ -3,6 +3,9 @@ from datetime import datetime
 from typing import Dict, Any, List
 from database import get_connection
 from catalog_matcher import match_catalog_item, auto_register_catalog_item
+from logging_config import get_logger
+
+logger = get_logger("ingestion")
 
 DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -142,7 +145,7 @@ def ingest_gemini_sales_json(payload: Dict[str, Any]) -> Dict[str, Any]:
             from gemini_enricher import enrich_analytics_with_gemini
             enrich_analytics_with_gemini(force_refresh=True)
         except Exception as e:
-            print(f"[Ingestion] Warning: AI enrichment trigger failed: {e}")
+            logger.warning(f"AI enrichment trigger failed: {e}")
 
         return {
 
