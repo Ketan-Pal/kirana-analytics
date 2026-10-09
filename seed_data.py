@@ -1,3 +1,4 @@
+import os
 import json
 import random
 from datetime import datetime, timedelta
@@ -85,8 +86,12 @@ BASKET_PATTERNS = [
     }
 ]
 
-def seed_database():
+def seed_database(force: bool = False):
     init_db()
+    if not force and os.getenv("ALLOW_SYNTHETIC_SEED", "false").lower() != "true":
+        print("[Seed] Synthetic seeding disabled (ALLOW_SYNTHETIC_SEED is false). Tables remain production-clean.")
+        return
+
     conn = get_connection()
     try:
         with conn.cursor() as cur:
@@ -206,4 +211,4 @@ def seed_database():
         conn.close()
 
 if __name__ == "__main__":
-    seed_database()
+    seed_database(force=True)

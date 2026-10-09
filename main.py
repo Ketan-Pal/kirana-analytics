@@ -1,5 +1,7 @@
+import os
 import json
-from typing import Dict, Any, List
+from datetime import datetime
+from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +36,9 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     init_db()
-    seed_database()
+    # TASK-002: In production, tables start clean on Day 1 unless synthetic seed is explicitly allowed
+    if os.getenv("ALLOW_SYNTHETIC_SEED", "false").lower() == "true":
+        seed_database()
 
 # --- API Routes ---
 
@@ -81,6 +85,16 @@ def api_ai_insights():
 def api_ai_insights_refresh():
     try:
         return enrich_analytics_with_gemini(force_refresh=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/festival-trend/crawl")
+def api_crawl_festival_trend(festival: str, year: Optional[int] = None):
+    try:
+        from festival_trend_crawler import crawl_and_update_festival_trend
+        target_year = year or datetime.now().year
+        res = crawl_and_update_festival_trend(festival, target_year, force=True)
+        return {"status": "success", "data": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -144,6 +158,38 @@ def index_page():
   </header>
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6">
+
+    <!-- Progressive Intelligence Unlocking Banner (TASK-006) -->
+    <div class="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 shadow-sm flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-lg">
+          🔓
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-white uppercase tracking-wider">Store Maturity & Progressive Intelligence</span>
+            <span id="stage-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
+              Stage: Checking...
+            </span>
+          </div>
+          <p id="stage-desc" class="text-[11px] text-slate-400 mt-0.5">
+            Progressively unlocks deeper statistical models as transaction history accumulates.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 text-xs">
+        <div class="flex items-center gap-1.5" id="stage-steps">
+          <span id="step-1" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400" title="Days 1-3">1: Volume</span>
+          <span class="text-slate-600">→</span>
+          <span id="step-2" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400" title="Days 4-14">2: Baskets</span>
+          <span class="text-slate-600">→</span>
+          <span id="step-3" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400" title="Days 15-30">3: Forecast</span>
+          <span class="text-slate-600">→</span>
+          <span id="step-4" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400" title="Days 31+">4: Momentum</span>
+        </div>
+      </div>
+    </div>
 
     <!-- KPI Summary Row -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -463,49 +509,76 @@ def index_page():
       // 1. Next Month Forecast
       const forecast = await fetchAPI('/api/next-month-forecast');
       if (forecast) {
-        document.getElementById('kpi-projected-rev').innerText = '₹' + forecast.total_projected_revenue.toLocaleString('en-IN');
+        updateProgressiveUnlock(forecast.active_days || 0);
+
+        document.getElementById('kpi-projected-rev').innerText = '₹' + (forecast.total_projected_revenue || 0).toLocaleString('en-IN');
         document.getElementById('kpi-target-month').innerText = forecast.target_month + ' Forecast';
-        document.getElementById('forecast-header-sub').innerText = `Projected for ${forecast.target_month} (${forecast.target_season} Season) across ${forecast.forecast_items.length} key items.`;
-        document.getElementById('forecast-season-badge').innerText = `Upcoming Season: ${forecast.target_season}`;
+        document.getElementById('forecast-header-sub').innerText = forecast.is_extrapolated 
+          ? `Early Run-Rate Extrapolated for ${forecast.target_month} (${forecast.target_season} Season) from ${forecast.active_days} active days.`
+          : `Projected for ${forecast.target_month} (${forecast.target_season} Season) across ${(forecast.forecast_items || []).length} key items.`;
+        document.getElementById('forecast-season-badge').innerText = `Upcoming Season: ${forecast.target_season}${forecast.is_extrapolated ? ' (Extrapolated)' : ''}`;
 
         const tbody = document.getElementById('forecast-table-body');
-        tbody.innerHTML = forecast.forecast_items.map(item => `
-          <tr class="hover:bg-slate-800/40">
-            <td class="py-2.5 px-3 font-semibold text-white">${item.name}</td>
-            <td class="py-2.5 px-3 text-slate-400">${item.category}</td>
-            <td class="py-2.5 px-3 text-slate-300">${item.current_month_qty} ${item.unit}</td>
-            <td class="py-2.5 px-3 font-bold text-indigo-300">${item.projected_next_month_qty} ${item.unit}</td>
-            <td class="py-2.5 px-3 font-bold ${item.growth_trend >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-              ${item.growth_trend >= 0 ? '+' : ''}${item.growth_trend}%
-            </td>
-            <td class="py-2.5 px-3 font-bold text-slate-200">₹${item.projected_revenue.toLocaleString('en-IN')}</td>
-            <td class="py-2.5 px-3 text-slate-400 text-[11px]">${item.stocking_action}</td>
-          </tr>
-        `).join('');
+        if (forecast.is_cold_start || !forecast.forecast_items || forecast.forecast_items.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400">
+            <div class="inline-flex flex-col items-center gap-2">
+              <span class="text-2xl">🌱</span>
+              <span class="font-bold text-white text-xs">Cold-Start Mode Active</span>
+              <span class="text-[11px] text-slate-500 max-w-md">No sales transactions recorded yet. Ingest your first daily sales notepad to activate run-rate predictive demand forecasting.</span>
+            </div>
+          </td></tr>`;
+        } else {
+          tbody.innerHTML = forecast.forecast_items.map(item => `
+            <tr class="hover:bg-slate-800/40">
+              <td class="py-2.5 px-3 font-semibold text-white">${item.name}</td>
+              <td class="py-2.5 px-3 text-slate-400">${item.category}</td>
+              <td class="py-2.5 px-3 text-slate-300">${item.current_month_qty} ${item.unit}</td>
+              <td class="py-2.5 px-3 font-bold text-indigo-300">${item.projected_next_month_qty} ${item.unit}</td>
+              <td class="py-2.5 px-3 font-bold ${item.growth_trend >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                ${item.growth_trend >= 0 ? '+' : ''}${item.growth_trend}%
+              </td>
+              <td class="py-2.5 px-3 font-bold text-slate-200">₹${item.projected_revenue.toLocaleString('en-IN')}</td>
+              <td class="py-2.5 px-3 text-slate-400 text-[11px]">${item.stocking_action}</td>
+            </tr>
+          `).join('');
+        }
       }
 
       // 2. Basket Co-Purchases
       const basketData = await fetchAPI('/api/basket-patterns');
-      if (basketData && basketData.length > 0) {
-        document.getElementById('kpi-top-pair').innerText = `${basketData[0].item_a} + ${basketData[0].item_b}`;
-        document.getElementById('kpi-pair-stat').innerText = `${basketData[0].confidence_pct}% Co-Purchase Rate`;
+      const basketContainer = document.getElementById('basket-pair-list');
+      if (basketData && basketData.is_gated) {
+        document.getElementById('kpi-top-pair').innerText = 'Accumulating';
+        document.getElementById('kpi-pair-stat').innerText = `${basketData.recorded_bills}/${basketData.threshold_bills} Bills Recorded`;
+        basketContainer.innerHTML = `
+          <div class="text-center py-6 text-indigo-300 text-xs font-semibold bg-slate-950/40 rounded-xl p-3 border border-indigo-900/30">
+            📊 ${basketData.message}
+            <p class="text-[10px] text-slate-500 mt-1 font-normal">Need 25 bills to avoid statistical skew in co-purchase lift.</p>
+          </div>`;
+      } else {
+        const pairs = Array.isArray(basketData) ? basketData : (basketData ? (basketData.patterns || []) : []);
+        if (pairs.length > 0) {
+          document.getElementById('kpi-top-pair').innerText = `${pairs[0].item_a} + ${pairs[0].item_b}`;
+          document.getElementById('kpi-pair-stat').innerText = `${pairs[0].confidence_pct}% Co-Purchase Rate`;
 
-        const container = document.getElementById('basket-pair-list');
-        container.innerHTML = basketData.map(b => `
-          <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
-            <div class="flex justify-between items-start gap-1">
-              <div class="font-bold text-slate-200 text-xs flex items-center gap-1">
-                <span class="text-indigo-400">${b.item_a}</span>
-                <span class="text-slate-500">+</span>
-                <span class="text-indigo-400">${b.item_b}</span>
+          basketContainer.innerHTML = pairs.map(b => `
+            <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+              <div class="flex justify-between items-start gap-1">
+                <div class="font-bold text-slate-200 text-xs flex items-center gap-1">
+                  <span class="text-indigo-400">${b.item_a}</span>
+                  <span class="text-slate-500">+</span>
+                  <span class="text-indigo-400">${b.item_b}</span>
+                </div>
+                <span class="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-500/30">
+                  ${b.confidence_pct}%
+                </span>
               </div>
-              <span class="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-500/30">
-                ${b.confidence_pct}%
-              </span>
+              <p class="text-[10px] text-slate-400 mt-1">${b.insight}</p>
             </div>
-            <p class="text-[10px] text-slate-400 mt-1">${b.insight}</p>
-          </div>
-        `).join('');
+          `).join('');
+        } else {
+          basketContainer.innerHTML = `<div class="text-center py-6 text-slate-500 text-xs">No basket pairings recorded yet.</div>`;
+        }
       }
 
       // 3. Weather Insights
@@ -594,27 +667,41 @@ def index_page():
         document.getElementById('kpi-fest-days').innerText = `${nextFest.days_until} Days Remaining (${nextFest.target_date})`;
 
         const fContainer = document.getElementById('festivals-container');
-        fContainer.innerHTML = roadmapData.roadmap.map(f => `
-          <div class="p-4 bg-slate-950/80 rounded-2xl border border-slate-800 flex flex-col justify-between">
+        fContainer.innerHTML = roadmapData.roadmap.map(f => {
+          const isLiveWeb = f.source && (f.source.includes('DuckDuckGo') || f.source.includes('gemini'));
+          return `
+          <div class="p-4 bg-slate-950/80 rounded-2xl border border-slate-800 flex flex-col justify-between hover:border-slate-700 transition-all">
             <div>
-              <div class="flex justify-between items-start gap-2 mb-2">
+              <div class="flex justify-between items-start gap-2 mb-1.5">
                 <h3 class="font-bold text-white text-xs">${f.name}</h3>
                 <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${f.days_until <= 30 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-slate-800 text-slate-300'}">
                   ${f.days_until} days
                 </span>
               </div>
-              <p class="text-[11px] text-slate-400 mb-2">📅 ${f.target_date} • ${f.status}</p>
+              <div class="flex items-center justify-between text-[10px] text-slate-400 mb-2">
+                <span>📅 ${f.target_date}</span>
+                <span class="px-1.5 py-0.2 rounded text-[9px] font-semibold ${isLiveWeb ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/50' : 'bg-slate-800/80 text-slate-400'}">
+                  ${isLiveWeb ? '🌐 Live Web Trends' : '🏛️ Regional Gazette'}
+                </span>
+              </div>
+              <p class="text-[10px] text-slate-500 mb-2">${f.status}</p>
               <div class="space-y-1.5 pt-2 border-t border-slate-800">
                 ${f.key_items.map(k => `
-                  <div class="text-[11px] text-slate-300 flex justify-between">
-                    <span>${k.item}</span>
-                    <span class="font-bold ${k.surge_pct > 0 ? 'text-amber-400' : 'text-slate-500'}">${k.surge_pct > 0 ? '+' : ''}${k.surge_pct}%</span>
+                  <div class="text-[11px] text-slate-300 flex justify-between" title="${k.trend_reason || k.prep_advice || ''}">
+                    <span class="truncate max-w-[170px]">${k.item}</span>
+                    <span class="font-bold shrink-0 ${k.surge_pct > 0 ? 'text-amber-400' : 'text-slate-500'}">${k.surge_pct > 0 ? '+' : ''}${k.surge_pct}%</span>
                   </div>
                 `).join('')}
               </div>
             </div>
+            <div class="mt-3 pt-2 border-t border-slate-900 flex justify-end">
+              <button onclick="crawlFestivalTrend('${encodeURIComponent(f.name)}', this)" class="text-[10px] font-semibold px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-lg flex items-center gap-1 transition-all">
+                <span>⚡</span> <span>Sense Live Trends</span>
+              </button>
+            </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       }
 
       // 8. AI Retail Strategy Advisor
@@ -750,6 +837,31 @@ def index_page():
         if (btn) btn.disabled = false;
         if (icon) icon.classList.remove('animate-spin');
         if (text) text.innerText = '⚡ Re-Synthesize Strategy';
+      }
+    }
+
+    async function crawlFestivalTrend(encodedName, btn) {
+      const festName = decodeURIComponent(encodedName);
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="animate-spin">⏳</span> <span>Searching DuckDuckGo...</span>`;
+      try {
+        const res = await fetch(`/api/festival-trend/crawl?festival=${encodeURIComponent(festName)}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'success') {
+          btn.innerHTML = `<span>✅</span> <span>Updated!</span>`;
+          setTimeout(async () => {
+            await loadDashboard();
+          }, 800);
+        } else {
+          btn.innerHTML = origHtml;
+          btn.disabled = false;
+          alert('Trend crawl failed: ' + (data.detail || 'Error'));
+        }
+      } catch (err) {
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+        alert('Crawl error: ' + err.message);
       }
     }
 
@@ -896,6 +1008,39 @@ def index_page():
       } finally {
         btn.disabled = false;
         btn.innerText = "Ingest & Update Patterns";
+      }
+    }
+
+    function updateProgressiveUnlock(activeDays) {
+      const badge = document.getElementById('stage-badge');
+      const desc = document.getElementById('stage-desc');
+      const s1 = document.getElementById('step-1');
+      const s2 = document.getElementById('step-2');
+      const s3 = document.getElementById('step-3');
+      const s4 = document.getElementById('step-4');
+
+      [s1, s2, s3, s4].forEach(s => {
+        if (s) s.className = 'px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400';
+      });
+
+      if (activeDays <= 3) {
+        if (badge) badge.innerText = `Stage 1 (${activeDays}/3 Days)`;
+        if (desc) desc.innerText = 'Stage 1 Active: Capturing baseline daily sales volume and top velocity SKUs.';
+        if (s1) s1.className = 'px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-600 text-white';
+      } else if (activeDays <= 14) {
+        if (badge) badge.innerText = `Stage 2 (${activeDays}/14 Days)`;
+        if (desc) desc.innerText = 'Stage 2 Active: Unlocking day-of-week shopping shifts and customer basket co-purchases.';
+        if (s1) s1.className = 'px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 text-white';
+        if (s2) s2.className = 'px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-600 text-white';
+      } else if (activeDays <= 30) {
+        if (badge) badge.innerText = `Stage 3 (${activeDays}/30 Days)`;
+        if (desc) desc.innerText = 'Stage 3 Active: Early run-rate extrapolation active for next-month forecast and weather lifts.';
+        [s1, s2].forEach(s => { if (s) s.className = 'px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 text-white'; });
+        if (s3) s3.className = 'px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-600 text-white';
+      } else {
+        if (badge) badge.innerText = `Stage 4 Mature (${activeDays}+ Days)`;
+        if (desc) desc.innerText = 'Stage 4 Fully Mature: Complete month-over-month trend momentum and multi-season forecasting active.';
+        [s1, s2, s3, s4].forEach(s => { if (s) s.className = 'px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 text-white'; });
       }
     }
 

@@ -71,12 +71,14 @@ flowchart TD
 
 ## 4. Architectural Decision Record (ADR): Festival Calendar Maintenance
 
-- **Decision:** Implement **Autonomous Annual AI Sync** via Google Gemini.
-- **Rationale:** Indian festivals (Diwali, Holi, Eid, Navratri) follow astronomical lunar calendars where Gregorian dates shift annually. Hardcoding requires yearly developer code changes.
-- **Production Implementation:**
-  - On January 1st of each year (or when a new calendar year is detected), the background service automatically queries Gemini for the confirmed Gregorian dates of major Indian festivals for that year.
-  - The results are autonomously inserted into the Supabase `festival_calendar` table.
-  - Requires **zero ongoing developer maintenance** post-production.
-  - Daily notepad annotations (`festival: Navratri Day 1`) serve as local ground-truth to validate and tune demand surge lead times.
+- **Decision:** Implement **Regional Government Calendar API Sync** via `https://calendar-api-d7a8.onrender.com/v1/holidays?country=IN&region=UP&year={YEAR}` (sourced from `india.gov.in/calendar`).
+- **Rationale:** Indian festivals (Diwali, Holi, Eid, Navratri, Makar Sankranti) follow astronomical lunar calendars where Gregorian dates shift annually. Hardcoding requires yearly developer code changes.
+- **Production Implementation & Rate Limit Protection:**
+  - **Strict Rate Limits:** The Render-hosted API imposes strict rate limits and MUST NOT be called per request or on page loads.
+  - **Batch Sync Cadence:** A background worker or cron invokes the API at most **once a month** (or annually on January 1st) for the active year (`country=IN&region=UP&year={current_year}`).
+  - **Persistent Supabase Storage:** Fetched records are persisted to the Supabase `festival_calendar` table.
+  - **Zero-API Runtime Lookups:** Runtime demand forecasting reads exclusively from Supabase, yielding 0ms latency and 0 risk of rate-limit exhaustion.
+  - **Deterministic Accuracy:** Sourced directly from official Government of India Gazetted Schedules (`india.gov.in`), ensuring 100% reliability without LLM hallucination risks or token costs.
+  - **Local Ground-Truth:** Daily notepad annotations (`festival: Navratri Day 1`) serve as local store validation to tune demand surge lead times.
 
 

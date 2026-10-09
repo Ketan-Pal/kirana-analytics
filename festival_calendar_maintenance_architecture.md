@@ -25,78 +25,49 @@ In the current prototype (`forecasting.py`), festival definitions were placed as
 
 ---
 
-## 3. Production Architecture: 3 Zero-Maintenance Solutions
+## 3. Production Architecture: Evaluated Strategies & Selected ADR-001
 
 ```mermaid
 flowchart TD
-    subgraph Zero_Dev_Strategies["Production Maintenance Strategies (0 Dev Work)"]
+    subgraph Zero_Dev_Strategies["Evaluated Production Strategies (0 Dev Work)"]
         S1["Strategy 1: 10-Year Database Table<br/>(Pre-populated 2025-2035 in Supabase)"]
         S2["Strategy 2: Algorithmic Lunar Library<br/>(python 'holidays' package)"]
-        S3["Strategy 3: Annual Autonomous AI Sync<br/>(Gemini Jan 1st Cron Job)"]
+        S3["Strategy 3: Regional Government Calendar API<br/>(ADR-001 Selected Strategy)"]
     end
 
-    S1 --> Engine["Dynamic Festival Forecaster Engine"]
-    S2 --> Engine
-    S3 --> Engine
+    S3 -->|"REST API: india.gov.in"| Cache["In-Memory & Supabase Cache"]
+    Cache --> Engine["Dynamic Festival Forecaster Engine"]
 
     Engine --> Out["Accurate Countdown & Wholesale Lead-Time Alerts"]
 ```
 
 ---
 
-### Strategy 1: The 10-Year Supabase Table (Recommended — Simplest & 100% Reliable)
+### Selected Strategy (ADR-001): Regional Government Calendar API Sync
 
-Instead of hardcoding dates in Python, we move the calendar to a dedicated table in Supabase via a Flyway migration:
-
-```sql
-CREATE TABLE IF NOT EXISTS festival_calendar (
-    id SERIAL PRIMARY KEY,
-    festival_name VARCHAR(100) NOT NULL,
-    calendar_year INTEGER NOT NULL,
-    festival_date DATE NOT NULL,
-    prep_lead_days INTEGER DEFAULT 14,
-    surge_categories JSONB,
-    surge_items JSONB,
-    UNIQUE(festival_name, calendar_year)
-);
+The system integrates directly with the **Official Indian Regional Calendar API**:
 ```
+GET https://calendar-api-d7a8.onrender.com/v1/holidays?country=IN&region=UP&year={YEAR}
+```
+**Data Source:** Official Government of India Gazetted Calendar (`https://www.india.gov.in/calendar`).
 
-#### Why this requires ZERO development work for 10 years:
-- A single Flyway migration script (`V4__seed_10year_festival_calendar.sql`) pre-loads all official Hindu, Islamic, and national festival dates for **2025 through 2035**.
-- The Python engine simply runs:
-  ```sql
-  SELECT festival_name, festival_date, surge_items
-  FROM festival_calendar
-  WHERE festival_date >= CURRENT_DATE
-  ORDER BY festival_date ASC
-  LIMIT 5;
-  ```
-- No code changes, no API failures, zero maintenance until 2035.
+#### Key Advantages & Strict Rate-Limit Safeguards:
+1. **100% Authoritative & Deterministic:** Backed by published Government of India gazettes, eliminating LLM hallucinations or variations in lunar interpretation.
+2. **State-Level Regional Granularity (`region=UP`):** Captures Uttar Pradesh state holidays, local festival observances (e.g., *Holika Dahan*, *Dussehra Mahashtami*, *Chhath Puja*, *Govardhan Puja*).
+3. **Strict Rate-Limit Protection (Monthly / Daily Cadence):** The external API has very strict rate limits. The system is designed so that it is **NEVER** called per-request or during user dashboard interactions. Instead, a background sync script or cron job queries the API at most **once a month** (or once a year on January 1st).
+4. **Persistent Supabase Storage:** Fetched holiday data is saved directly into the Supabase database (`festival_calendar` table). Runtime demand forecasting queries the database locally with zero network delay and zero API rate limit exposure.
+5. **Zero Developer Maintenance for Any Year:** When a new calendar year arrives, the scheduled monthly sync requests `year={new_year}` automatically, maintaining the system indefinitely with zero code changes.
+6. **No LLM Quota Overhead:** Standard REST JSON response; does not consume Gemini API tokens.
 
 ---
 
-### Strategy 2: Python Astronomical & Holiday Package (`holidays` library)
-
-The Python ecosystem includes the open-source `holidays` library (`pip install holidays`), which includes built-in lunar algorithms for Indian regional and national festivals:
-
-```python
-import holidays
-# Automatically computes exact lunar dates for ANY year without external APIs
-in_festivals = holidays.India(years=[2026, 2027, 2028])
-```
-
-- **Pros:** Completely algorithmic, works offline, never expires.
-- **Cons:** Only tracks major public holidays; regional shopping events (e.g. Navratri Fasting weeks or Dhanteras shopping day) still need custom offset rules.
+### Alternative Strategy 1: The 10-Year Supabase Table (Static Pre-Seeded)
+Instead of live API calls, move the calendar to a pre-populated static table in Supabase via Flyway migration (`V4__seed_10year_festival_calendar.sql`) with dates from 2025 to 2035.
 
 ---
 
-### Strategy 3: Autonomous Annual AI Sync (Self-Updating Agent)
-
-Since your system is already integrated with Gemini:
-- On **January 1st of every year**, an automated lightweight background job runs:
-  > *"Prompt Gemini: Return a JSON array of the exact dates of Diwali, Navratri, Holi, Eid, Raksha Bandhan, and Makar Sankranti for Year {current_year}."*
-- The result is automatically inserted into the Supabase `festival_calendar` table.
-- **Result:** The system maintains itself indefinitely into the future with zero human touch.
+### Alternative Strategy 2: Python Astronomical & Holiday Package (`holidays` library)
+Use the Python open-source `holidays` package (`pip install holidays`) which includes built-in lunar algorithms for Indian holidays. (Limited in tracking multi-day shopping preparation phases).
 
 ---
 

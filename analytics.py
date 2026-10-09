@@ -26,8 +26,16 @@ def get_basket_co_purchases(min_pairs: int = 4) -> List[Dict[str, Any]]:
         item_freq[r["product_name"]] += 1
 
     total_baskets = len(baskets)
-    if total_baskets == 0:
-        return []
+    # TASK-003: Statistical sample gating (requires minimum 25 recorded bills)
+    if total_baskets < 25:
+        return {
+            "status": "sample_gating",
+            "is_gated": True,
+            "recorded_bills": total_baskets,
+            "threshold_bills": 25,
+            "message": f"Accumulating basket combinations ({total_baskets}/25 bills recorded)",
+            "patterns": []
+        }
 
     pair_counts = defaultdict(int)
     for items in baskets.values():
@@ -38,11 +46,14 @@ def get_basket_co_purchases(min_pairs: int = 4) -> List[Dict[str, Any]]:
     results = []
     for (item_a, item_b), count in pair_counts.items():
         if count >= min_pairs:
-            conf_a_b = count / item_freq[item_a]
-            conf_b_a = count / item_freq[item_b]
+            conf_a_b = count / max(1, item_freq[item_a])
+            conf_b_a = count / max(1, item_freq[item_b])
             max_conf = max(conf_a_b, conf_b_a)
 
-            lift = (count / total_baskets) / ((item_freq[item_a] / total_baskets) * (item_freq[item_b] / total_baskets))
+            p_a = item_freq[item_a] / total_baskets
+            p_b = item_freq[item_b] / total_baskets
+            denominator = p_a * p_b
+            lift = (count / total_baskets) / denominator if denominator > 0 else 1.0
 
             results.append({
                 "item_a": item_a,
@@ -210,7 +221,9 @@ def get_changing_trend_patterns() -> Dict[str, Any]:
 
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT product_name, category, SUM(quantity) as recent_qty, SUM(total_amount) as recent_rev
+                SELECT product_name, category, 
+                       COALESCE(SUM(quantity), 0) as recent_qty, 
+                       COALESCE(SUM(total_amount), 0.0) as recent_rev
                 FROM sale_items
                 WHERE sale_date BETWEEN %s AND %s
                 GROUP BY product_name, category;
@@ -218,7 +231,9 @@ def get_changing_trend_patterns() -> Dict[str, Any]:
             recent_map = {r["product_name"]: dict(r) for r in cur.fetchall()}
 
             cur.execute("""
-                SELECT product_name, category, SUM(quantity) as prior_qty, SUM(total_amount) as prior_rev
+                SELECT product_name, category, 
+                       COALESCE(SUM(quantity), 0) as prior_qty, 
+                       COALESCE(SUM(total_amount), 0.0) as prior_rev
                 FROM sale_items
                 WHERE sale_date BETWEEN %s AND %s
                 GROUP BY product_name, category;
@@ -237,8 +252,15 @@ def get_changing_trend_patterns() -> Dict[str, Any]:
 
         if p_qty > 0:
             growth_pct = round(((r_qty - p_qty) / p_qty) * 100, 1)
+            is_surging = growth_pct >= 15.0
+            is_declining = growth_pct <= -10.0
+            momentum_status = "Surging" if is_surging else ("Declining" if is_declining else "Stable")
         else:
-            growth_pct = 100.0 if r_qty > 0 else 0.0
+            # TASK-001: When prior_qty == 0 (Days 1-30 baseline accumulation), return 0.0 and flag as Baseline Accumulating
+            growth_pct = 0.0
+            is_surging = False
+            is_declining = False
+            momentum_status = "Baseline Accumulating"
 
         growth_analysis.append({
             "product_name": p,
@@ -246,8 +268,9 @@ def get_changing_trend_patterns() -> Dict[str, Any]:
             "recent_30d_qty": round(r_qty, 1),
             "prior_30d_qty": round(p_qty, 1),
             "growth_pct": growth_pct,
-            "is_surging": growth_pct >= 15.0,
-            "is_declining": growth_pct <= -10.0
+            "momentum_status": momentum_status,
+            "is_surging": is_surging,
+            "is_declining": is_declining
         })
 
     surging_items = sorted([g for g in growth_analysis if g["is_surging"]], key=lambda x: x["growth_pct"], reverse=True)

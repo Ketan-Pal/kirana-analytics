@@ -71,9 +71,12 @@ FESTIVAL_CALENDAR = [
     }
 ]
 
+from festival_service import get_festival_roadmap as get_festival_roadmap_from_db
+
 def get_next_month_forecast() -> Dict[str, Any]:
     """
     Predicts next month's demand by SKU and Category from Supabase PostgreSQL.
+    Features TASK-004: Early run-rate extrapolation during Days 1-29 cold-start.
     """
     conn = get_connection()
     try:
@@ -81,14 +84,23 @@ def get_next_month_forecast() -> Dict[str, Any]:
         d_30_ago = (today - timedelta(days=30)).strftime("%Y-%m-%d")
 
         with conn.cursor() as cur:
+            # Check how many distinct days are recorded (cold-start detection)
+            cur.execute("""
+                SELECT COUNT(DISTINCT sale_date) as active_days
+                FROM sale_items
+                WHERE sale_date >= %s;
+            """, (d_30_ago,))
+            active_row = cur.fetchone()
+            active_days = int(active_row["active_days"]) if active_row and active_row["active_days"] else 0
+
             cur.execute("""
                 SELECT 
                     product_name,
                     category,
                     unit,
                     unit_price,
-                    SUM(quantity) as current_monthly_qty,
-                    SUM(total_amount) as current_monthly_rev
+                    COALESCE(SUM(quantity), 0) as current_monthly_qty,
+                    COALESCE(SUM(total_amount), 0.0) as current_monthly_rev
                 FROM sale_items
                 WHERE sale_date >= %s
                 GROUP BY product_name, category, unit, unit_price;
@@ -99,7 +111,7 @@ def get_next_month_forecast() -> Dict[str, Any]:
             cur.execute("""
                 SELECT 
                     product_name,
-                    SUM(quantity) as prior_qty
+                    COALESCE(SUM(quantity), 0) as prior_qty
                 FROM sale_items
                 WHERE sale_date BETWEEN %s AND %s
                 GROUP BY product_name;
@@ -121,20 +133,39 @@ def get_next_month_forecast() -> Dict[str, Any]:
     else:
         target_season = "Winter"
 
+    if not rows or active_days == 0:
+        return {
+            "target_month": next_month_name,
+            "target_season": target_season,
+            "total_projected_revenue": 0.0,
+            "total_projected_units": 0,
+            "forecast_items": [],
+            "is_cold_start": True,
+            "active_days": 0,
+            "message": "Awaiting initial daily sales transactions to generate baseline run-rate forecast."
+        }
+
+    # TASK-004: Extrapolate daily run-rate if operating for fewer than 30 days
+    extrapolation_multiplier = (30.0 / active_days) if (1 <= active_days < 30) else 1.0
+
     forecast_items = []
     total_projected_revenue = 0.0
     total_projected_units = 0
 
     for r in rows:
         name = r["product_name"]
-        curr_qty = float(r["current_monthly_qty"])
-        prior_qty = prior_map.get(name, curr_qty)
+        raw_curr_qty = float(r["current_monthly_qty"])
+        
+        # Apply 30-day run-rate extrapolation during early store weeks
+        curr_qty = raw_curr_qty * extrapolation_multiplier
+        prior_qty = prior_map.get(name, 0.0)
         price = float(r["unit_price"])
 
         if prior_qty > 0:
             growth_rate = (curr_qty - prior_qty) / prior_qty
             damped_growth = max(-0.25, min(0.35, growth_rate))
         else:
+            # Baseline accumulating during first month
             damped_growth = 0.05
 
         predicted_qty = round(curr_qty * (1.0 + damped_growth))
@@ -150,22 +181,24 @@ def get_next_month_forecast() -> Dict[str, Any]:
         elif target_season == "Festive" and (cat == "Staples" or "Sugar" in name or "Besan" in name):
             seasonal_lift = 1.30
 
-        final_forecast_qty = max(5, int(predicted_qty * seasonal_lift))
+        final_forecast_qty = max(3, int(predicted_qty * seasonal_lift))
         projected_rev = round(final_forecast_qty * price, 2)
 
         total_projected_revenue += projected_rev
         total_projected_units += final_forecast_qty
 
+        extrapolation_note = f" (Extrapolated from {active_days}d run-rate)" if (1 <= active_days < 30) else ""
+
         forecast_items.append({
             "name": name,
             "category": cat,
-            "current_month_qty": int(curr_qty),
+            "current_month_qty": int(round(raw_curr_qty)),
             "projected_next_month_qty": final_forecast_qty,
             "unit": r["unit"],
             "unit_price": price,
             "projected_revenue": projected_rev,
-            "growth_trend": round(((final_forecast_qty - curr_qty) / max(1, curr_qty)) * 100, 1),
-            "stocking_action": f"Prepare inventory for ~{final_forecast_qty} {r['unit']} ({'+' if final_forecast_qty > curr_qty else ''}{round(((final_forecast_qty - curr_qty) / max(1, curr_qty)) * 100)}% vs last month)"
+            "growth_trend": round(((final_forecast_qty - curr_qty) / max(1.0, curr_qty)) * 100, 1),
+            "stocking_action": f"Prepare inventory for ~{final_forecast_qty} {r['unit']}{extrapolation_note} ({'+' if final_forecast_qty > curr_qty else ''}{round(((final_forecast_qty - curr_qty) / max(1.0, curr_qty)) * 100)}% vs run-rate)"
         })
 
     forecast_items.sort(key=lambda x: x["projected_revenue"], reverse=True)
@@ -173,16 +206,28 @@ def get_next_month_forecast() -> Dict[str, Any]:
     return {
         "target_month": next_month_name,
         "target_season": target_season,
+        "active_days": active_days,
+        "is_extrapolated": 1 <= active_days < 30,
         "total_projected_revenue": round(total_projected_revenue, 2),
         "total_projected_units": total_projected_units,
         "forecast_items": forecast_items
     }
 
 def get_seasonal_and_festival_roadmap() -> Dict[str, Any]:
-    """Provides forward roadmap for upcoming seasons and major Indian festivals."""
+    """
+    Provides forward roadmap for upcoming seasons and major Indian festivals.
+    Dynamically served from Supabase festival_calendar table (ADR-001).
+    """
+    try:
+        db_roadmap = get_festival_roadmap_from_db()
+        if db_roadmap and db_roadmap.get("roadmap"):
+            return db_roadmap
+    except Exception as e:
+        print(f"[Roadmap] Fallback from database roadmap: {e}")
+
+    # Fallback to local calendar if database table is initializing
     today = datetime.now()
     current_year = today.year
-
     upcoming_festivals = []
 
     for fest in FESTIVAL_CALENDAR:
@@ -214,7 +259,6 @@ def get_seasonal_and_festival_roadmap() -> Dict[str, Any]:
         })
 
     upcoming_festivals.sort(key=lambda x: x["days_until"])
-
     return {
         "current_date": today.strftime("%d-%b-%Y"),
         "roadmap": upcoming_festivals

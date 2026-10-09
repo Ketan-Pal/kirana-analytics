@@ -72,12 +72,18 @@ def save_insights_to_cache(insights: Dict[str, Any], model_used: str = PRIMARY_M
 
 def build_synthesis_prompt(context_data: Dict[str, Any]) -> str:
     """Builds the prompt that guides Gemini to act as a senior Indian Kirana retail consultant."""
+    raw_baskets = context_data.get('baskets', [])
+    if isinstance(raw_baskets, dict):
+        baskets_sample = raw_baskets.get('patterns', [])[:5] if not raw_baskets.get('is_gated') else [{"status": raw_baskets.get("message")}]
+    else:
+        baskets_sample = raw_baskets[:5] if isinstance(raw_baskets, list) else []
+
     return f"""You are a master Indian Retail & FMCG Business Consultant specializing in Kirana stores and neighbourhood convenience retail.
 
 Analyze the following live mathematical sales patterns and forecast data collected from the store:
 
 ### 1. Customer Basket Co-Purchases (What sells together in bills):
-{json.dumps(context_data.get('baskets', [])[:5], indent=2)}
+{json.dumps(baskets_sample, indent=2)}
 
 ### 2. Product Growth Momentum (Surging vs. Declining in last 30 days):
 {json.dumps(context_data.get('trends', {}), indent=2)}
@@ -133,9 +139,9 @@ Return ONLY a valid JSON object matching this exact schema:
 """
 
 def generate_fallback_insights(context_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Generates deterministic baseline intelligence if the Gemini API is temporarily offline."""
-    top_baskets = context_data.get("baskets", [])
-    pair_str = f"{top_baskets[0]['item_a']} + {top_baskets[0]['item_b']}" if top_baskets else "Maggi + Thums Up"
+    raw_baskets = context_data.get("baskets", [])
+    top_baskets = raw_baskets if isinstance(raw_baskets, list) else (raw_baskets.get("patterns", []) if isinstance(raw_baskets, dict) else [])
+    pair_str = f"{top_baskets[0]['item_a']} + {top_baskets[0]['item_b']}" if (top_baskets and isinstance(top_baskets[0], dict) and 'item_a' in top_baskets[0]) else "Maggi + Thums Up"
 
     return {
         "daily_executive_summary": "Focus counter space on high-velocity evening snack pairs and check safety stock for upcoming festival essentials. Demand momentum is positive across branded staples.",
