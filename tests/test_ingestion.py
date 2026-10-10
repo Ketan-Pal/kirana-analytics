@@ -54,7 +54,14 @@ def test_ingest_valid_sample_sale():
             }
         ]
     }
-    result = ingest_gemini_sales_json(sample_payload)
-    assert result["batch_id"] is not None
-    assert result["sales_recorded"] == 1
-    assert result["total_items_processed"] == 2
+    try:
+        result = ingest_gemini_sales_json(sample_payload)
+        assert result["batch_id"] is not None
+        assert result["sales_recorded"] == 1
+        assert result["total_items_processed"] == 2
+    finally:
+        from database import get_db_cursor
+        with get_db_cursor(commit=True) as cur:
+            cur.execute("DELETE FROM sale_items WHERE sale_no = 9991;")
+            cur.execute("DELETE FROM sales_batches WHERE raw_json->'sales'->0->>'sale_no' = '9991';")
+            cur.execute("DELETE FROM ai_insights_cache WHERE cache_key = 'latest_enrichment';")
