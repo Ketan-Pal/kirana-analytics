@@ -98,7 +98,7 @@ def api_ai_insights():
         return enrich_analytics_with_gemini(force_refresh=False)
     except Exception as e:
         logger.error(f"Error fetching AI insights: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch AI insights.")
 
 @app.post("/api/ai-insights/refresh")
 def api_ai_insights_refresh():
@@ -106,7 +106,7 @@ def api_ai_insights_refresh():
         return enrich_analytics_with_gemini(force_refresh=True)
     except Exception as e:
         logger.error(f"Error refreshing AI insights: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to refresh AI insights.")
 
 @app.post("/api/festival-trend/crawl")
 def api_crawl_festival_trend(festival: str, year: Optional[int] = None):
@@ -117,7 +117,7 @@ def api_crawl_festival_trend(festival: str, year: Optional[int] = None):
         return {"status": "success", "data": res}
     except Exception as e:
         logger.error(f"Error crawling trend for '{festival}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to crawl festival trend.")
 
 @app.post("/api/ingest")
 def api_ingest(payload: SalesIngestPayload):
@@ -126,7 +126,7 @@ def api_ingest(payload: SalesIngestPayload):
         return {"status": "success", "data": result}
     except Exception as e:
         logger.error(f"Failed to ingest sales batch: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Invalid ingest request.")
 
 @app.post("/api/reset-data")
 def api_reset():

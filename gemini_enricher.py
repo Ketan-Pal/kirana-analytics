@@ -247,7 +247,7 @@ def enrich_analytics_with_gemini(force_refresh: bool = False) -> Dict[str, Any]:
 
     logger.warning(f"All Gemini model attempts failed ({last_error}). Falling back to baseline.")
     fallback = generate_fallback_insights(context_data)
-    fallback["_error"] = str(last_error)
+    fallback["_error"] = "AI enrichment is temporarily unavailable; fallback insights are being used."
     return fallback
 
 
