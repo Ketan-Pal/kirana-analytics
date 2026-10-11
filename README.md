@@ -1,5 +1,5 @@
-# Kirana Demand Pattern & Predictive Forecasting System
-### AI-Powered Basket Mining, Trend Momentum, Regional Festival Roadmaps & Autonomous Retail Advisory
+# Kirana Retail Analytics & Predictive Demand Forecasting Engine
+### AI-Driven Inventory Optimization, Market Basket Analysis & Festival Surge Planning for Grocery Stores
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg)](https://fastapi.tiangolo.com)
@@ -13,11 +13,11 @@
 
 ## 🎯 System Mission
 
-The **Kirana Demand Pattern & Predictive Forecasting System** is a purpose-built retail intelligence platform designed specifically for Indian Kirana and neighbourhood grocery stores (150–300 sq. ft.).
+The **Kirana Retail Analytics & Predictive Demand Forecasting Engine** is an AI-powered retail intelligence and inventory optimization platform designed specifically for Indian Kirana and neighbourhood grocery stores (150–300 sq. ft.).
 
 Unlike conventional enterprise POS or ERP software that imposes tedious barcode scanning and credit ledger overhead, this system extracts **predictive retail intelligence** directly from traditional, handwritten daily counter sales notepads:
-1. **Customer Buying Patterns:** Identifies high-lift co-purchase item combinations to design margin-boosting bundle deals.
-2. **Changing Market Trends:** Analyzes 30-day velocity momentum to alert the storekeeper to surging vs. cooling grocery products.
+1. **Customer Buying Patterns & Market Basket Analysis:** Identifies high-lift co-purchase item combinations to design margin-boosting bundle deals.
+2. **Changing Market Trends & Dead-Stock Reduction:** Analyzes 30-day velocity momentum to alert the storekeeper to surging vs. cooling grocery products, preventing stale inventory and dead capital.
 3. **Multi-Horizon Demand Forecasting:** Projects next-month SKU volumes, weather-driven swings (Summer cooling vs. Monsoon snacking vs. Winter staples), and a 12-month advance Indian festival roadmap.
 4. **$0 Dynamic Market Trend Sensing:** Autonomously crawls the web keylessly via DuckDuckGo and synthesizes modern festive demand shifts using Gemini Flash without costly search grounding APIs.
 5. **Autonomous AI Strategy Advisor:** Acts as a 24/7 seasoned FMCG retail consultant, delivering actionable shelf placement directives, promo deals, and distributor timing advice.
@@ -493,6 +493,17 @@ When launching with zero historical transactions, capabilities unlock progressiv
   - Google Gemini: Free Tier (15 RPM free, insights cached in DB).
   - Indian Calendar API: Free Tier (cached for 30 days).
   - DuckDuckGo: Free HTML search (keyless, zero tokens).
+
+---
+
+## 🤝 Setup Assistance & Technical Management
+
+Are you a store owner, retail consultant, or organization looking to deploy this system for your store or pilot program?
+
+If you want me to set this up for you, customize it for your product catalogue, or manage the technicals and cloud infrastructure for you, feel free to connect:
+
+- 📧 **Email:** [ketanpal88@gmail.com](mailto:ketanpal88@gmail.com)
+- 💼 **LinkedIn:** [linkedin.com/in/ketan-pal](https://www.linkedin.com/in/ketan-pal/)
 
 ---
 
