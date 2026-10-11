@@ -7,6 +7,7 @@
 [![AI Engine](https://img.shields.io/badge/AI-Google%20Gemini%20Flash-8E75C2.svg)](https://ai.google.dev/)
 [![OS Support](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-blueviolet.svg)](#-quickstart--installation-cross-platform)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Visitors](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2FKetan-Pal%2Fkirana-analytics&label=Views&countColor=%23dce775&style=flat-square&labelStyle=upper)](https://visitorbadge.io/status?path=https%3A%2F%2Fgithub.com%2FKetan-Pal%2Fkirana-analytics)
 
 ---
 
